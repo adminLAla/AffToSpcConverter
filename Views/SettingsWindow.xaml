@@ -1,0 +1,79 @@
+﻿<Window x:Class="AffToSpcConverter.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Height="520" Width="560"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0">
+            <StackPanel>
+
+                <GroupBox Header="Base" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="Denominator"/>
+                            <TextBox Width="100" Text="{Binding Denominator}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="Sky width ratio"/>
+                            <TextBox Width="100" Text="{Binding SkyWidthRatio}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="X mapping"/>
+                            <ComboBox Width="160" SelectedValue="{Binding XMapping}" SelectedValuePath="Content">
+                                <ComboBoxItem Content="clamp01"/>
+                                <ComboBoxItem Content="compress"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Difficulty / Remix (optional)" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <CheckBox Content="Tap width pattern" IsChecked="{Binding TapWidthPatternEnabled}" Margin="0,0,0,6"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="Pattern (e.g. 1,2,1,2)"/>
+                            <TextBox Width="220" Text="{Binding TapWidthPattern}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="Dense threshold (ms, 0=auto)"/>
+                            <TextBox Width="100" Text="{Binding DenseTapThresholdMs}"/>
+                        </StackPanel>
+
+                        <CheckBox Content="Randomize hold width" IsChecked="{Binding HoldWidthRandomEnabled}" Margin="0,12,0,6"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="Max hold width"/>
+                            <TextBox Width="100" Text="{Binding HoldWidthRandomMax}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
+                            <TextBlock Width="160" VerticalAlignment="Center" Text="Random seed"/>
+                            <TextBox Width="100" Text="{Binding RandomSeed}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Sky (optional)">
+                    <StackPanel Margin="10">
+                        <CheckBox Content="Skyarea strategy2 (expressive)" IsChecked="{Binding SkyareaStrategy2}"/>
+                    </StackPanel>
+                </GroupBox>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">OK</Button>
+            <Button Width="90" IsCancel="True">Cancel</Button>
+        </StackPanel>
+    </Grid>
+</Window>
