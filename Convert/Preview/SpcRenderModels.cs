@@ -25,8 +25,8 @@ namespace AffToSpcConverter.Convert.Preview
 
     public sealed class RenderModel
     {
-        public double Bpm { get; init; }
-        public double Beats { get; init; }
+        public double Bpm { get; set; }
+        public double Beats { get; set; }
         public List<RenderItem> Items { get; } = new();
         public List<(int timeMs, double bpm, double beats)> BpmChanges { get; } = new();
     }

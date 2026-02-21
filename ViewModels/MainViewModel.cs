@@ -1,4 +1,6 @@
-﻿using System.ComponentModel;
+﻿using AffToSpcConverter.Models;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace AffToSpcConverter.ViewModels;
@@ -59,4 +61,83 @@ public class MainViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    // ---- Visual Preview ----
+    private IReadOnlyList<ISpcEvent>? _previewEvents;
+    public IReadOnlyList<ISpcEvent>? PreviewEvents
+    {
+        get => _previewEvents;
+        set { _previewEvents = value; OnPropertyChanged(); }
+    }
+
+    private int _previewTimeMs;
+    public int PreviewTimeMs
+    {
+        get => _previewTimeMs;
+        set
+        {
+            if (_previewTimeMs == value) return;
+            _previewTimeMs = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private int _previewMaxTimeMs = 10000;
+    public int PreviewMaxTimeMs
+    {
+        get => _previewMaxTimeMs;
+        set
+        {
+            if (_previewMaxTimeMs == value) return;
+            _previewMaxTimeMs = value;
+            OnPropertyChanged();
+        }
+    }
+
+    // 类似视频里 Speed: 1.20 h/s（我们这里用 PixelsPerSecond 表示“1秒=多少像素”）
+    private double _previewPixelsPerSecond = 1000; // 默认更接近游戏观感
+    public double PreviewPixelsPerSecond
+    {
+        get => _previewPixelsPerSecond;
+        set
+        {
+            if (System.Math.Abs(_previewPixelsPerSecond - value) < 0.0001) return;
+            _previewPixelsPerSecond = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PreviewPixelsPerSecondEffective));
+        }
+    }
+
+    private double _previewSpeed = 1.0;
+    public double PreviewSpeed
+    {
+        get => _previewSpeed;
+        set
+        {
+            var next = value <= 0 ? 0.01 : value;
+            if (System.Math.Abs(_previewSpeed - next) < 0.0001) return;
+            _previewSpeed = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PreviewPixelsPerSecondEffective));
+        }
+    }
+
+    public double PreviewPixelsPerSecondEffective => PreviewPixelsPerSecond * PreviewSpeed;
+
+    // ---- Audio ----
+    private string? _bgmPath;
+    public string? BgmPath
+    {
+        get => _bgmPath;
+        set { _bgmPath = value; OnPropertyChanged(); OnPropertyChanged(nameof(BgmFileName)); }
+    }
+
+    public string BgmFileName => System.IO.Path.GetFileName(_bgmPath ?? "") is { Length: > 0 } s ? s : "No BGM";
+
+    private bool _isPlaying;
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        set { _isPlaying = value; OnPropertyChanged(); }
+    }
 }
