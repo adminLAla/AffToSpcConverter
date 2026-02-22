@@ -10,7 +10,7 @@ namespace AffToSpcConverter.Views;
 public partial class PackageWindow : Window
 {
     private readonly PackageViewModel _vm = new PackageViewModel();
-    private const string MappingFileName = "mapping.json";
+    private const string MappingFileName = "StreamingAssetsMapping.json";
 
     public PackageWindow()
     {

@@ -58,12 +58,13 @@ public static class EasingUtil
         return token switch
         {
             "s" => u,
-            "si" => u * u,
-            "so" => 1.0 - (1.0 - u) * (1.0 - u),
 
-            // 混合/复杂缓动用 smoothstep 保持单调
-            "sisi" => u * u,
-            "soso" => 1.0 - (1.0 - u) * (1.0 - u),
+            "si" => Math.Sin(u * Math.PI * 0.5),              // (was OutSine)
+            "so" => 1.0 - Math.Cos(u * Math.PI * 0.5),        // (was InSine)
+
+            "sisi" => Math.Sin(u * Math.PI * 0.5),
+            "soso" => 1.0 - Math.Cos(u * Math.PI * 0.5),
+
             "siso" => SmoothStep(u),
             "sosi" => SmoothStep(u),
 
