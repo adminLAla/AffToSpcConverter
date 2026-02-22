@@ -14,13 +14,13 @@ public static class ReportUtil
 
         int Count(string key) => lines.Count(l => l.Trim().StartsWith(key, StringComparison.OrdinalIgnoreCase));
 
-        // Parse chart(bpm,beats)
+        // 解析 chart(bpm,beats)
         (double? bpm, double? beats) ParseChart()
         {
             var line = lines.Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("chart(", StringComparison.OrdinalIgnoreCase));
             if (line == null) return (null, null);
 
-            // chart(180.00,4.00)
+            // 示例：chart(180.00,4.00)
             int a = line.IndexOf('(');
             int b = line.LastIndexOf(')');
             if (a < 0 || b < 0 || b <= a) return (null, null);
@@ -40,7 +40,7 @@ public static class ReportUtil
         var sb = new StringBuilder();
         sb.AppendLine("=== Report ===");
         sb.AppendLine($"chart: {Count("chart(")}");
-        sb.AppendLine($"bpm-events: {Count("bpm(")}"); // 如果以后你加了 bpm(time,bpm,beats)，这里也能数到
+        sb.AppendLine($"bpm-events: {Count("bpm(")}"); // 若以后增加 bpm(time,bpm,beats)，这里也能统计
         sb.AppendLine($"chart.bpm: {(chartBpm.HasValue ? chartBpm.Value.ToString("0.00", CultureInfo.InvariantCulture) : "N/A")}");
         sb.AppendLine($"chart.beats: {(chartBeats.HasValue ? chartBeats.Value.ToString("0.00", CultureInfo.InvariantCulture) : "N/A")}");
         sb.AppendLine($"lane: {Count("lane(")}");

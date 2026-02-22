@@ -25,7 +25,7 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _disableLanes;
     public bool DisableLanes { get => _disableLanes; set { _disableLanes = value; OnPropertyChanged(); } }
 
-    // ---- Optional features ----
+    // ---- 可选功能 ----
 
     private bool _tapWidthPatternEnabled;
     public bool TapWidthPatternEnabled { get => _tapWidthPatternEnabled; set { _tapWidthPatternEnabled = value; OnPropertyChanged(); } }
@@ -33,7 +33,7 @@ public class MainViewModel : INotifyPropertyChanged
     private string _tapWidthPattern = "1,2";
     public string TapWidthPattern { get => _tapWidthPattern; set { _tapWidthPattern = value; OnPropertyChanged(); } }
 
-    private int _denseTapThresholdMs = 0; // 0 => auto (16th note from base bpm)
+    private int _denseTapThresholdMs = 0; // 0 表示自动（以基准 BPM 的 16 分音符）
     public int DenseTapThresholdMs { get => _denseTapThresholdMs; set { _denseTapThresholdMs = value; OnPropertyChanged(); } }
 
     private bool _holdWidthRandomEnabled;
@@ -48,7 +48,7 @@ public class MainViewModel : INotifyPropertyChanged
     private int _randomSeed = 12345;
     public int RandomSeed { get => _randomSeed; set { _randomSeed = value; OnPropertyChanged(); } }
 
-    // ---- Previews ----
+    // ---- 预览 ----
     private string _affPreview = "";
     public string AffPreview { get => _affPreview; set { _affPreview = value; OnPropertyChanged(); } }
 
@@ -62,7 +62,7 @@ public class MainViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-    // ---- Visual Preview ----
+    // ---- 可视化预览 ----
     private IReadOnlyList<ISpcEvent>? _previewEvents;
     public IReadOnlyList<ISpcEvent>? PreviewEvents
     {
@@ -94,7 +94,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // 类似视频里 Speed: 1.20 h/s（我们这里用 PixelsPerSecond 表示“1秒=多少像素”）
+    // 类似视频里的速度：1.20 h/s（这里用 PixelsPerSecond 表示“1秒=多少像素”）
     private double _previewPixelsPerSecond = 1000; // 默认更接近游戏观感
     public double PreviewPixelsPerSecond
     {
@@ -124,7 +124,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public double PreviewPixelsPerSecondEffective => PreviewPixelsPerSecond * PreviewSpeed;
 
-    // ---- Audio ----
+    // ---- 音频 ----
     private string? _bgmPath;
     public string? BgmPath
     {
@@ -139,5 +139,29 @@ public class MainViewModel : INotifyPropertyChanged
     {
         get => _isPlaying;
         set { _isPlaying = value; OnPropertyChanged(); }
+    }
+
+    private int _previewTargetFps = 144;
+    public int PreviewTargetFps
+    {
+        get => _previewTargetFps;
+        set
+        {
+            if (_previewTargetFps == value) return;
+            _previewTargetFps = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _showFpsStats = true;
+    public bool ShowFpsStats
+    {
+        get => _showFpsStats;
+        set
+        {
+            if (_showFpsStats == value) return;
+            _showFpsStats = value;
+            OnPropertyChanged();
+        }
     }
 }

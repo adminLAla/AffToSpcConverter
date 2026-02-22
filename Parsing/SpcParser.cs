@@ -59,7 +59,7 @@ public static class SpcParser
                         break;
                 }
             }
-            catch { /* ignore malformed lines */ }
+            catch { /* 忽略格式不正确的行 */ }
         }
         return events;
     }

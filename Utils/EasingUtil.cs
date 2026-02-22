@@ -5,12 +5,12 @@ namespace AffToSpcConverter.Utils;
 
 public static class EasingUtil
 {
-    // spc: 0 line, 11 / 22 are curve codes (as you inferred)
+    // spc：0 为直线，11/22 为曲线代码
     public static (int left, int right) SlideTokenToSpcEdgeCodes(string token)
     {
         token = (token ?? "s").Trim().ToLowerInvariant();
 
-        // In Falsus: 0 = line, 1/2 = curve (two directions)
+        // In Falsus：0=直线，1/2=曲线（两种方向）
         return token switch
         {
             "s" => (0, 0),
@@ -40,13 +40,13 @@ public static class EasingUtil
 
     public static int DirectionFromArc(AffArc a, int tMs)
     {
-        // compare near-future x to decide direction
+        // 通过比较未来的 x 来判断方向
         int t2 = Math.Min(a.T2Ms, tMs + 8);
         double xNow = EvalArcX(a, tMs);
         double xNext = EvalArcX(a, t2);
 
         if (Math.Abs(xNext - xNow) < 1e-6)
-            return 4; // default right
+            return 4; // 默认向右
 
         return (xNext > xNow) ? 4 : 16;
     }
@@ -61,7 +61,7 @@ public static class EasingUtil
             "si" => u * u,
             "so" => 1.0 - (1.0 - u) * (1.0 - u),
 
-            // For mixed / complex: use smoothstep so it stays nice & monotonic
+            // 混合/复杂缓动用 smoothstep 保持单调
             "sisi" => u * u,
             "soso" => 1.0 - (1.0 - u) * (1.0 - u),
             "siso" => SmoothStep(u),

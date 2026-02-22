@@ -96,7 +96,7 @@ public static class AffParser
                 continue;
             }
 
-            // ignore other lines (timinggroup/scenecontrol/etc.)
+            // 忽略其他行（timinggroup/scenecontrol 等）
         }
 
         return chart;

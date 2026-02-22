@@ -15,11 +15,11 @@ namespace AffToSpcConverter.Views
             {
                 if (leftDir)
                 {
-                    // Vertical edge on the LEFT (Yellow)
+                    // 左侧垂直边
                     var ptLeftBottom = new Point(cx - half, y);
                     var ptRight = new Point(cx + half, y);
                     var ptLeftTop = new Point(cx - half, y - triH);
-                    var cp = new Point(cx - half * 0.6, y); // Pull towards bottom-left
+                    var cp = new Point(cx - half * 0.6, y); // 向左下拉控制点
                     
                     g.BeginFigure(ptRight, true, true);
                     g.LineTo(ptLeftBottom, true, false);
@@ -28,11 +28,11 @@ namespace AffToSpcConverter.Views
                 }
                 else
                 {
-                    // Vertical edge on the RIGHT (Green)
+                    // 右侧垂直边
                     var ptLeft = new Point(cx - half, y);
                     var ptRightBottom = new Point(cx + half, y);
                     var ptRightTop = new Point(cx + half, y - triH);
-                    var cp = new Point(cx + half * 0.6, y); // Pull towards bottom-right
+                    var cp = new Point(cx + half * 0.6, y); // 向右下拉控制点
                     
                     g.BeginFigure(ptLeft, true, true);
                     g.LineTo(ptRightBottom, true, false);
@@ -44,7 +44,7 @@ namespace AffToSpcConverter.Views
             return geo;
         }
 
-        // Cache for SkyArea geometries based on item and PxPerMs
+        // 天空区域几何缓存（基于音符与速度）
         private static readonly Dictionary<int, (double pxPerMs, StreamGeometry geo)> _skyAreaGeoCache = new();
 
         public static void ClearCache()
@@ -54,8 +54,8 @@ namespace AffToSpcConverter.Views
 
         public static StreamGeometry BuildSkyAreaGeo(Rect sky, RenderItem item, double pxPerMs)
         {
-            int itemIdx = item.GetHashCode(); // Using hashcode as a simple ID, or we can pass an ID
-            // Actually, since we rebuild everything when PxPerMs changes, we can just use the object reference hash
+            int itemIdx = item.GetHashCode(); // 使用哈希作为简易 ID
+            // 因为 PxPerMs 改变会整体重建，这里使用对象哈希即可
             
             if (_skyAreaGeoCache.TryGetValue(itemIdx, out var cached) && Math.Abs(cached.pxPerMs - pxPerMs) < 1e-6)
             {
@@ -75,7 +75,7 @@ namespace AffToSpcConverter.Views
             var geo = new StreamGeometry();
             using (var g = geo.Open())
             {
-                // left edge
+                // 左边界
                 for (int i = 0; i <= steps; i++)
                 {
                     double t = i / (double)steps;
@@ -87,7 +87,7 @@ namespace AffToSpcConverter.Views
                     else g.LineTo(new Point(px, yy), true, false);
                 }
 
-                // right edge
+                // 右边界
                 for (int i = steps; i >= 0; i--)
                 {
                     double t = i / (double)steps;
@@ -106,7 +106,12 @@ namespace AffToSpcConverter.Views
         private static double Lerp(double a, double b, double t) => a + (b - a) * t;
         private static double LerpEase(double a, double b, double t, int ease)
         {
-            t = ease switch { 1 => t * t, 2 => 1 - (1 - t) * (1 - t), _ => t };
+            t = ease switch
+            {
+                1 => Math.Sin(t * Math.PI * 0.5),
+                2 => 1.0 - Math.Cos(t * Math.PI * 0.5),
+                _ => t
+            };
             return a + (b - a) * t;
         }
         private static double SmoothEase(double x, double t)

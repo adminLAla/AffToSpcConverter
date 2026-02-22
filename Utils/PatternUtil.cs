@@ -9,17 +9,17 @@ public static class PatternUtils
 {
     public static int DefaultDenseThresholdMs(double bpm)
     {
-        // 16th note duration in ms: beat/4
+        // 16 分音符时长（ms）：拍长/4
         double beatMs = 60000.0 / Math.Max(1.0, bpm);
         return (int)Math.Round(beatMs / 4.0);
     }
 
     // ---------------------------------------
-    // (1) Merge skyareas that share same window
+    // (1) 合并同窗口的 skyarea
     // ---------------------------------------
     public static List<SpcSkyArea> MergeSkyAreasBySameWindow(List<SpcSkyArea> skyAreas)
     {
-        // Keyed by (startTime, duration)
+        // 按 (startTime, duration) 分组
         var grouped = skyAreas
             .GroupBy(s => (s.TimeMs, s.DurationMs))
             .OrderBy(g => g.Key.TimeMs)
@@ -38,7 +38,7 @@ public static class PatternUtils
                 continue;
             }
 
-            // Merge: average x, take max width, easing: if一致则保留，否则线性
+            // 合并：x 取平均，宽度取最大，缓动一致则保留，否则用线性
             int den = list[0].Den1;
 
             double ax1 = list.Average(s => (double)s.X1Num / den);
@@ -69,7 +69,7 @@ public static class PatternUtils
     }
 
     // ---------------------------------------------------
-    // (1b) Multiple flick at same time -> keep one, others to ground
+    // (1b) 同时刻多滑键：保留一个，其余落地
     // ---------------------------------------------------
     public static void ResolveSimultaneousFlicksToGround(
         List<SpcFlick> flicks,
@@ -90,10 +90,10 @@ public static class PatternUtils
                 continue;
             }
 
-            // keep the first flick (stable)
+            // 保留第一个滑键（稳定）
             flicks.Add(list[0]);
 
-            // others -> ground lane 0/5 (or only 5 if disableLanes)
+            // 其余 -> 地面 0/5 轨（禁用时仅 5）
             for (int i = 1; i < list.Count; i++)
             {
                 int lane;
@@ -103,23 +103,23 @@ public static class PatternUtils
                 }
                 else
                 {
-                    // pick by x side OR alternate
+                    // 根据 x 方向或交替分配
                     bool right = list[i].PosNum >= (list[i].Den / 2);
                     lane = right ? 5 : 0;
 
-                    // also alternate to spread (optional)
+                    // 交替分散（可选）
                     if ((alt++ % 2) == 1) lane = (lane == 0) ? 5 : 0;
                 }
 
-                // Was: new SpcTap(list[i].TimeMs, lane, 1) -> (time, lane, kind/width)
-                // Now: new SpcTap(list[i].TimeMs, 1, lane) -> (time, kind, lane)
+                // 原：new SpcTap(list[i].TimeMs, lane, 1) -> (time, lane, kind/width)
+                // 现：new SpcTap(list[i].TimeMs, 1, lane) -> (time, kind, lane)
                 groundTaps.Add(new SpcTap(list[i].TimeMs, 1, lane));
             }
         }
     }
 
     // ---------------------------------------
-    // (2) Flick readability: dynamic width + alternating direction
+    // (2) 滑键可读性：密集段加宽 + 方向交替
     // ---------------------------------------
     public static void ApplyFlickReadabilityStyle(
         List<SpcFlick> flicks,
@@ -141,7 +141,7 @@ public static class PatternUtils
 
         flicks.Sort((a, b) => a.TimeMs.CompareTo(b.TimeMs));
 
-        int lastDir = 4; // right
+        int lastDir = 4; // 向右
         for (int i = 0; i < flicks.Count; i++)
         {
             var f = flicks[i];
@@ -155,8 +155,8 @@ public static class PatternUtils
 
             if (options.FlickDynamicWidthWhenDense && dense)
             {
-                // den-based: widen in dense clusters
-                // mildly dense -> x2, very dense -> x3
+                // 基于 den：密集段加宽
+                // 略密集 -> x2，非常密集 -> x3
                 int factor = (Math.Min(dtPrev, dtNext) <= denseMs / 2) ? 3 : 2;
                 width = MathUtil.ClampInt(baseFlickWidth * factor, 1, den);
             }
@@ -165,7 +165,7 @@ public static class PatternUtils
 
             if (options.FlickAlternateDirectionWhenDense && dense)
             {
-                // alternate direction when dense
+                // 密集时交替方向
                 dir = (lastDir == 4) ? 16 : 4;
             }
 
@@ -176,7 +176,7 @@ public static class PatternUtils
     }
 
     // ---------------------------------------
-    // (3) Tap width pattern, safely (avoid hold overlap + only in dense tap runs)
+    // (3) Tap 宽度模式（避开 hold，且只在密集段启用）
     // ---------------------------------------
     public static void ApplyTapWidthPatternSafely(
         List<SpcTap> taps,
@@ -190,14 +190,15 @@ public static class PatternUtils
 
         var allowed = new HashSet<int>(allowedLanes);
 
-        // Build hold active intervals (global) to avoid “tap + hold 混读谱”
+        // 构建 hold 区间，避免 “tap + hold 混读谱”
+        // 构建长按区间，避免 “点按 + 长按 混读谱”
         var holdIntervals = holds
             .Select(h => (start: h.TimeMs, end: h.TimeMs + Math.Max(0, h.DurationMs)))
             .ToList();
 
         bool InAnyHold(int t)
         {
-            // small chart -> linear scan ok; if large, switch to sweep/interval tree later
+            // 小谱面用线性扫描即可；大谱面可换扫描线/区间树
             foreach (var it in holdIntervals)
             {
                 if (t >= it.start && t <= it.end) return true;
@@ -212,7 +213,8 @@ public static class PatternUtils
             return a.LaneIndex.CompareTo(b.LaneIndex);
         });
 
-        // Apply only inside dense runs of taps (by time adjacency)
+        // 仅在密集点按段内应用
+        // 仅在密集 tap 段内应用
         int patIdx = 0;
         int lastTapTime = int.MinValue;
 
@@ -228,7 +230,8 @@ public static class PatternUtils
 
             if (InAnyHold(t.TimeMs))
             {
-                // Always keep simple when any hold is active
+                // 任一长按激活时保持简单
+                // 任一 hold 激活时保持简单
                 taps[i] = t with { Kind = 1 };
                 continue;
             }
@@ -238,7 +241,7 @@ public static class PatternUtils
 
             if (!dense)
             {
-                // reset pattern outside dense segments
+                // 离开密集段时重置模式
                 patIdx = 0;
                 taps[i] = t with { Kind = 1 };
             }
@@ -254,7 +257,7 @@ public static class PatternUtils
     }
 
     // ---------------------------------------
-    // (legacy) Randomize hold width
+    // (旧功能) 随机化 hold 宽度
     // ---------------------------------------
     public static void RandomizeHoldWidthInPlace(List<SpcHold> holds, Random rng, int maxWidth)
     {
@@ -262,7 +265,7 @@ public static class PatternUtils
 
         for (int i = 0; i < holds.Count; i++)
         {
-            // Keep majority width=1; occasionally widen
+            // 大部分保持宽度=1，偶尔加宽
             int roll = rng.Next(0, 100);
             int w = 1;
 

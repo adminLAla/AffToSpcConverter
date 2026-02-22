@@ -1,7 +1,7 @@
-﻿<Window x:Class="AffToSpcConverter.Views.SettingsWindow"
+<Window x:Class="AffToSpcConverter.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Settings" Height="520" Width="560"
+        Title="&#35774;&#32622;" Height="520" Width="560"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -12,20 +12,21 @@
         <ScrollViewer Grid.Row="0">
             <StackPanel>
 
-                <GroupBox Header="Base" Margin="0,0,0,10">
+                <!-- &#22522;&#30784;&#21442;&#25968; -->
+                <GroupBox Header="&#22522;&#30784;&#21442;&#25968;" Margin="0,0,0,10">
                     <StackPanel Margin="10">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="Denominator"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#20998;&#27597;&#65288;Denominator&#65289;"/>
                             <TextBox Width="100" Text="{Binding Denominator}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="Sky width ratio"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="Sky &#23485;&#24230;&#27604;&#20363;"/>
                             <TextBox Width="100" Text="{Binding SkyWidthRatio}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="X mapping"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="X &#22352;&#26631;&#26144;&#23556;&#27169;&#24335;"/>
                             <ComboBox Width="160" SelectedValue="{Binding XMapping}" SelectedValuePath="Content">
                                 <ComboBoxItem Content="clamp01"/>
                                 <ComboBoxItem Content="compress"/>
@@ -34,37 +35,53 @@
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="Difficulty / Remix (optional)" Margin="0,0,0,10">
+                <!-- &#38590;&#24230; / &#28151;&#38899;&#65288;&#21487;&#36873;&#65289; -->
+                <GroupBox Header="&#38590;&#24230; / &#28151;&#38899;&#65288;&#21487;&#36873;&#65289;" Margin="0,0,0,10">
                     <StackPanel Margin="10">
-                        <CheckBox Content="Tap width pattern" IsChecked="{Binding TapWidthPatternEnabled}" Margin="0,0,0,6"/>
+                        <CheckBox Content="&#21551;&#29992; Tap &#23485;&#24230;&#26679;&#24335;" IsChecked="{Binding TapWidthPatternEnabled}" Margin="0,0,0,6"/>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="Pattern (e.g. 1,2,1,2)"/>
-                            <TextBox Width="220" Text="{Binding TapWidthPattern}"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#26679;&#24335;&#65288;&#22914; 1,2,1,2&#65289;"/>
+                            <TextBox Width="200" Text="{Binding TapWidthPattern}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="Dense threshold (ms, 0=auto)"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#23494;&#38598;&#38459;&#20540;&#65288;ms&#65292;0=&#33258;&#21160;&#65289;"/>
                             <TextBox Width="100" Text="{Binding DenseTapThresholdMs}"/>
                         </StackPanel>
 
-                        <CheckBox Content="Randomize hold width" IsChecked="{Binding HoldWidthRandomEnabled}" Margin="0,12,0,6"/>
+                        <CheckBox Content="&#38543;&#26426;&#21270; Hold &#23485;&#24230;" IsChecked="{Binding HoldWidthRandomEnabled}" Margin="0,12,0,6"/>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="Max hold width"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#26368;&#22823; Hold &#23485;&#24230;"/>
                             <TextBox Width="100" Text="{Binding HoldWidthRandomMax}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
-                            <TextBlock Width="160" VerticalAlignment="Center" Text="Random seed"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#38543;&#26426;&#31295;&#23376;"/>
                             <TextBox Width="100" Text="{Binding RandomSeed}"/>
                         </StackPanel>
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="Sky (optional)">
+                <GroupBox Header="&#22825;&#31354;&#65288;&#21487;&#36873;&#65289;" Margin="0,10,0,0">
                     <StackPanel Margin="10">
-                        <CheckBox Content="Skyarea strategy2 (expressive)" IsChecked="{Binding SkyareaStrategy2}"/>
+                        <CheckBox Content="SkyArea &#31532;&#20108;&#31574;&#30053;&#65288;&#34920;&#29616;&#22411;&#65289;" IsChecked="{Binding SkyareaStrategy2}"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="&#39044;&#35272;&#65288;&#21487;&#36873;&#65289;" Margin="0,10,0,0">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#30446;&#26631; FPS"/>
+                            <ComboBox Width="160" SelectedValuePath="Content" SelectedValue="{Binding PreviewTargetFps}">
+                                <ComboBoxItem Content="60"/>
+                                <ComboBoxItem Content="120"/>
+                                <ComboBoxItem Content="144"/>
+                                <ComboBoxItem Content="165"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <CheckBox Content="&#26174;&#31034; FPS/&#24103;&#26102;&#38388;" IsChecked="{Binding ShowFpsStats}"/>
                     </StackPanel>
                 </GroupBox>
 
@@ -72,8 +89,8 @@
         </ScrollViewer>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">OK</Button>
-            <Button Width="90" IsCancel="True">Cancel</Button>
+            <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">&#30830;&#23450;</Button>
+            <Button Width="90" IsCancel="True">&#21462;&#28040;</Button>
         </StackPanel>
     </Grid>
 </Window>

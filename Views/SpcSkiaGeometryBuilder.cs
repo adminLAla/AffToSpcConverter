@@ -131,7 +131,12 @@ namespace AffToSpcConverter.Views
         private static double Lerp(double a, double b, double t) => a + (b - a) * t;
         private static double LerpEase(double a, double b, double t, int ease)
         {
-            t = ease switch { 1 => t * t, 2 => 1 - (1 - t) * (1 - t), _ => t };
+            t = ease switch
+            {
+                1 => Math.Sin(t * Math.PI * 0.5),
+                2 => 1.0 - Math.Cos(t * Math.PI * 0.5),
+                _ => t
+            };
             return a + (b - a) * t;
         }
 

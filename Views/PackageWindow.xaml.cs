@@ -53,16 +53,15 @@ public partial class PackageWindow : Window
     {
         try
         {
-            _vm.Status = "Packaging...";
-            // Use new Pack signature without key argument
+            _vm.Status = "打包中...";
             GameAssetPacker.Pack(_vm.SourceFilePath, _vm.OriginalFilename, _vm.MappingJsonPath, _vm.OutputDirectory);
-            _vm.Status = "Success!";
-            MessageBox.Show("Packaged successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            _vm.Status = "打包成功！";
+            MessageBox.Show("资源已成功打包！", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            _vm.Status = $"Error: {ex.Message}";
-            MessageBox.Show($"Error packaging assets: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            _vm.Status = $"错误：{ex.Message}";
+            MessageBox.Show($"打包资源时出错：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

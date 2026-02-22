@@ -10,9 +10,11 @@ namespace AffToSpcConverter.Convert.Preview
         public static RenderModel Build(IEnumerable<ISpcEvent> events)
         {
             var model = new RenderModel();
+            var eventList = events as IList<ISpcEvent> ?? events.ToList();
 
-            foreach (var e in events)
+            for (int i = 0; i < eventList.Count; i++)
             {
+                var e = eventList[i];
                 switch (e)
                 {
                     case SpcChart c:
@@ -25,14 +27,15 @@ namespace AffToSpcConverter.Convert.Preview
                         break;
 
                     case SpcTap t:
-                        // tap(time, kind, lane)
                         model.Items.Add(new RenderItem
                         {
                             Type = RenderItemType.GroundTap,
                             TimeMs = t.TimeMs,
                             EndTimeMs = t.TimeMs,
                             Lane = t.LaneIndex,
-                            Kind = t.Kind
+                            Kind = t.Kind,
+                            SourceEvent = e,
+                            SourceIndex = i
                         });
                         break;
 
@@ -43,7 +46,9 @@ namespace AffToSpcConverter.Convert.Preview
                             TimeMs = h.TimeMs,
                             EndTimeMs = h.TimeMs + Math.Max(0, h.DurationMs),
                             Lane = h.LaneIndex,
-                            Kind = h.Width
+                            Kind = h.Width,
+                            SourceEvent = e,
+                            SourceIndex = i
                         });
                         break;
 
@@ -56,7 +61,9 @@ namespace AffToSpcConverter.Convert.Preview
                             Den = f.Den,
                             X0 = f.PosNum,
                             W0 = f.WidthNum,
-                            Dir = f.Dir
+                            Dir = f.Dir,
+                            SourceEvent = e,
+                            SourceIndex = i
                         });
                         break;
 
@@ -66,22 +73,21 @@ namespace AffToSpcConverter.Convert.Preview
                             Type = RenderItemType.SkyArea,
                             TimeMs = s.TimeMs,
                             EndTimeMs = s.TimeMs + Math.Max(0, s.DurationMs),
-
-                            Den = s.Den1, // 你的 spc 里 den1/den2 应该一致
+                            Den = s.Den1,
                             X0 = s.X1Num,
                             X1 = s.X2Num,
                             W0 = s.W1Num,
                             W1 = s.W2Num,
-
                             LeftEase = s.LeftEasing,
                             RightEase = s.RightEasing,
                             GroupId = s.GroupId,
+                            SourceEvent = e,
+                            SourceIndex = i
                         });
                         break;
                 }
             }
 
-            // 画面稳定：按时间排序（同一时间 skyarea/hold 在底层）
             model.Items.Sort((a, b) =>
             {
                 int c = a.TimeMs.CompareTo(b.TimeMs);
