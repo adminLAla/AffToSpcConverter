@@ -15,6 +15,30 @@ namespace AffToSpcConverter.Views
 {
     public enum PreviewViewMode { Split, Merged }
 
+    public enum AddNoteType { Tap, Hold, Flick, SkyArea }
+
+    public sealed class AddNoteRequest
+    {
+        public AddNoteType Type { get; init; }
+        public int GroundWidth { get; init; } = 1;
+        public int Den { get; init; } = 24;
+        public int WidthNum { get; init; } = 1;
+        public int WidthNum2 { get; init; } = 1;
+        public int Dir { get; init; } = 4;
+        public int LeftEase { get; init; }
+        public int RightEase { get; init; }
+        public int GroupId { get; init; } = 1;
+    }
+
+    public sealed record AddNotePlacement(
+        AddNoteRequest Request,
+        int StartTimeMs,
+        int EndTimeMs,
+        int Lane,
+        int PosNum,
+        int PosNum2
+    );
+
     /// <summary>
     /// High-performance Skia preview control supporting split and merged overlay views.
     /// </summary>
@@ -122,7 +146,7 @@ namespace AffToSpcConverter.Views
         private static readonly SKPaint FlickStrokeRightPaint = MkStroke(120, 240, 160, 1.5f);
         private static readonly SKPaint SkyAreaFillPaint = MkFill(140, 100, 230, 70);
         private static readonly SKPaint SkyAreaStrokePaint = MkStroke(180, 150, 255, 1, alpha: 160);
-        private static readonly SKPaint SkyAreaStripePaint = MkStripePaint(255, 255, 255, 35, 40f);
+        private static readonly SKPaint SkyAreaStripePaint = MkStripePaint(255, 255, 255, 25, 80f);
         // 选中高亮：白色（填充半透明，描边不透明）
         private static readonly SKPaint SelectedFillPaint = MkFill(255, 255, 255, 70);
         private static readonly SKPaint SelectedStrokePaint = MkStroke(255, 255, 255, 2);
@@ -137,6 +161,13 @@ namespace AffToSpcConverter.Views
 
         // ===== 音符选中事件 =====
         public event Action<RenderItem?>? NoteSelected;
+        public event Action<AddNotePlacement>? NotePlacementCommitted;
+
+        private AddNoteRequest? _pendingAddRequest;
+        private bool _placingNoteDrag;
+        private int _placeStartTimeMs;
+        private int _placeStartLane;
+        private int _placeStartPosNum;
 
         public SpcPreviewGLControl()
         {
@@ -398,6 +429,12 @@ namespace AffToSpcConverter.Views
             set { _selectedItemIndex = value; _snapSelectedIndex = value; }
         }
 
+        public void BeginAddNotePlacement(AddNoteRequest request)
+        {
+            _pendingAddRequest = request;
+            _placingNoteDrag = false;
+        }
+
         public double GetJudgeY() => Math.Max(TopPad + 20, ActualHeight - JudgeFromBottom);
 
         private double TimeAtY(double judgeY, double y)
@@ -433,6 +470,14 @@ namespace AffToSpcConverter.Views
         {
             base.OnMouseDown(e);
             Focus();
+
+            if (e.ChangedButton == MouseButton.Left && _pendingAddRequest != null)
+            {
+                HandleAddNoteMouseDown(e.GetPosition(this));
+                e.Handled = true;
+                return;
+            }
+
             _dragStart = e.GetPosition(this);
             _judgeTimeStart = JudgeTimeMs;
             _pxPerMsStart = PxPerMs;
@@ -447,6 +492,7 @@ namespace AffToSpcConverter.Views
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if (_placingNoteDrag) return;
             if (!_dragTime && !_dragZoom) return;
 
             var pos = e.GetPosition(this);
@@ -478,6 +524,13 @@ namespace AffToSpcConverter.Views
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
             base.OnMouseUp(e);
+            if (e.ChangedButton == MouseButton.Left && _placingNoteDrag)
+            {
+                HandleAddNoteMouseUp(e.GetPosition(this));
+                e.Handled = true;
+                return;
+            }
+
             if (e.ChangedButton == MouseButton.Left && _dragTime)
             {
                 if (_isDragClick)
@@ -497,7 +550,151 @@ namespace AffToSpcConverter.Views
         protected override void OnMouseLeave(MouseEventArgs e)
         {
             base.OnMouseLeave(e);
+            if (_placingNoteDrag)
+            {
+                _placingNoteDrag = false;
+                ReleaseMouseCapture();
+                return;
+            }
             if (_dragTime || _dragZoom) { _dragTime = false; _dragZoom = false; ReleaseMouseCapture(); }
+        }
+
+        private void HandleAddNoteMouseDown(Point pos)
+        {
+            var request = _pendingAddRequest;
+            if (request == null) return;
+
+            if (!TryGetPlacementPoint(pos, request, out int timeMs, out int lane, out int posNum))
+                return;
+
+            if (request.Type == AddNoteType.Tap || request.Type == AddNoteType.Flick)
+            {
+                _pendingAddRequest = null;
+                NotePlacementCommitted?.Invoke(new AddNotePlacement(request, timeMs, timeMs, lane, posNum, posNum));
+                return;
+            }
+
+            _placeStartTimeMs = timeMs;
+            _placeStartLane = lane;
+            _placeStartPosNum = posNum;
+            _placingNoteDrag = true;
+            CaptureMouse();
+        }
+
+        private void HandleAddNoteMouseUp(Point pos)
+        {
+            var request = _pendingAddRequest;
+            if (request == null) return;
+
+            _placingNoteDrag = false;
+            ReleaseMouseCapture();
+
+            if (!TryGetPlacementPoint(pos, request, out int endTimeMs, out int endLane, out int endPosNum))
+            {
+                endTimeMs = _placeStartTimeMs;
+                endLane = _placeStartLane;
+                endPosNum = _placeStartPosNum;
+            }
+
+            int startTime = _placeStartTimeMs;
+            int startLane = _placeStartLane;
+            int startPos = _placeStartPosNum;
+
+            if (endTimeMs < startTime)
+            {
+                (startTime, endTimeMs) = (endTimeMs, startTime);
+                (startLane, endLane) = (endLane, startLane);
+                (startPos, endPosNum) = (endPosNum, startPos);
+            }
+
+            _pendingAddRequest = null;
+            NotePlacementCommitted?.Invoke(new AddNotePlacement(request, startTime, endTimeMs, startLane, startPos, endPosNum));
+        }
+
+        private bool TryGetPlacementPoint(Point pos, AddNoteRequest request, out int timeMs, out int lane, out int posNum)
+        {
+            timeMs = 0;
+            lane = 0;
+            posNum = 0;
+
+            SKRect ground, sky;
+            float judgeY;
+            lock (_layoutLock)
+            {
+                ground = _groundRect;
+                sky = _skyRect;
+                judgeY = _judgeY;
+            }
+
+            float x = (float)pos.X;
+            float y = (float)pos.Y;
+
+            bool isSky = request.Type == AddNoteType.Flick || request.Type == AddNoteType.SkyArea;
+            if (isSky)
+            {
+                if (x < sky.Left || x > sky.Right || y < sky.Top || y > judgeY) return false;
+            }
+            else
+            {
+                if (x < ground.Left || x > ground.Right || y < ground.Top || y > judgeY) return false;
+            }
+
+            double pxPerMs = ReadDouble(ref _snapPxPerMsBits);
+            double judgeTimeMs = ReadDouble(ref _snapJudgeTimeMsBits);
+            double rawTimeMs = judgeTimeMs + (judgeY - y) / Math.Max(1e-6, pxPerMs);
+            timeMs = SnapTimeMs(rawTimeMs, pxPerMs);
+
+            if (isSky)
+            {
+                int den = Math.Max(1, request.Den);
+                float u = (x - sky.Left) / Math.Max(1f, sky.Width);
+                posNum = Math.Clamp((int)Math.Round(u * den), 0, den);
+                return true;
+            }
+
+            float laneW = Math.Max(1f, ground.Width / GroundLanes);
+            lane = Math.Clamp((int)Math.Floor((x - ground.Left) / laneW), 0, 5);
+
+            int width = request.Type == AddNoteType.Hold
+                ? Math.Clamp(request.GroundWidth, 1, 6)
+                : Math.Clamp(request.GroundWidth, 1, 4);
+
+            int leftLane = lane;
+            if (leftLane + width > GroundLanes) leftLane = GroundLanes - width;
+            lane = Math.Clamp(leftLane, 0, 5);
+            return true;
+        }
+
+        private int SnapTimeMs(double rawTimeMs, double pxPerMs)
+        {
+            RenderModel? model;
+            lock (_modelLock) { model = _snapModel; }
+            if (model == null || model.Bpm <= 0 || model.Beats <= 0)
+                return Math.Max(0, (int)Math.Round(rawTimeMs));
+
+            double msPerBeat = 60000.0 / model.Bpm;
+            double msPerMeasure = msPerBeat * model.Beats;
+
+            double chosenMs = msPerMeasure;
+            for (int mi = 0; mi < RulerMultiples.Length; mi++)
+            {
+                double c = msPerMeasure * RulerMultiples[mi];
+                if (c * pxPerMs >= 80) { chosenMs = c; break; }
+            }
+
+            double pxPerBeat = msPerBeat * pxPerMs;
+            double subMs = 0;
+            if (pxPerBeat >= 28) subMs = msPerBeat / 4.0;
+            else if (pxPerBeat >= 16) subMs = msPerBeat / 2.0;
+            else if (pxPerBeat >= 10) subMs = msPerBeat;
+
+            double snapMeasure = Math.Round(rawTimeMs / chosenMs) * chosenMs;
+            double snapSub = subMs > 0 ? Math.Round(rawTimeMs / subMs) * subMs : rawTimeMs;
+            double snapped = Math.Abs(snapSub - rawTimeMs) <= Math.Abs(snapMeasure - rawTimeMs)
+                ? snapSub
+                : snapMeasure;
+
+            return Math.Max(0, (int)Math.Round(snapped));
         }
 
         private void HandleClick(Point pos)
@@ -1134,17 +1331,31 @@ namespace AffToSpcConverter.Views
 
         private static SKPaint MkStripePaint(byte r, byte g, byte b, byte a, float size)
         {
+            const float stripePx = 3f;
+            float len = Math.Max(1.2f, size * 0.25f);
+            float band = stripePx / len;
+
             var colors = new[]
             {
-                new SKColor(r, g, b, 0),
-                new SKColor(r, g, b, 0),
-                new SKColor(r, g, b, a),
-                new SKColor(r, g, b, a)
+                new SKColor(200, 170, 255, 0),
+                new SKColor(200, 170, 255, 0),
+                new SKColor(200, 170, 255, 70),
+                new SKColor(200, 170, 255, 70),
+                new SKColor(200, 170, 255, 0),
+                new SKColor(200, 170, 255, 0)
             };
-            var pos = new[] { 0f, 0.49f, 0.51f, 1f };
+            var pos = new[]
+            {
+                0f,
+                1.0f - band,
+                1.0f,
+                1.0f + band,
+                1.0f + band * 2f,
+                1.5f
+            };
             var shader = SKShader.CreateLinearGradient(
                 new SKPoint(0, 0),
-                new SKPoint(size, size),
+                new SKPoint(len * 1.5f, len * 3.5f),
                 colors,
                 pos,
                 SKShaderTileMode.Repeat);

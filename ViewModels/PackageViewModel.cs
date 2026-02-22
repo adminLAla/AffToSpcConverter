@@ -11,9 +11,6 @@ public class PackageViewModel : INotifyPropertyChanged
     private string _originalFilename = "";
     public string OriginalFilename { get => _originalFilename; set { _originalFilename = value; OnPropertyChanged(); } }
 
-    private string _mappingJsonPath = "";
-    public string MappingJsonPath { get => _mappingJsonPath; set { _mappingJsonPath = value; OnPropertyChanged(); } }
-
     private string _outputDirectory = "";
     public string OutputDirectory { get => _outputDirectory; set { _outputDirectory = value; OnPropertyChanged(); } }
 

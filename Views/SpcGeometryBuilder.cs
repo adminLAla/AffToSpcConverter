@@ -108,8 +108,8 @@ namespace AffToSpcConverter.Views
         {
             t = ease switch
             {
-                1 => Math.Sin(t * Math.PI * 0.5),
-                2 => 1.0 - Math.Cos(t * Math.PI * 0.5),
+                1 => t * t * t,                              // Cubic In ¡ª strong acceleration
+                2 => 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t), // Cubic Out ¡ª strong deceleration
                 _ => t
             };
             return a + (b - a) * t;

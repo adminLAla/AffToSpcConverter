@@ -1,0 +1,124 @@
+<Window x:Class="AffToSpcConverter.Views.CustomMappingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="自建规则 — 参数映射" Height="600" Width="580"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0">
+            <StackPanel>
+
+                <!-- 基础参数 -->
+                <GroupBox Header="基础参数" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="分母（Denominator）"/>
+                            <TextBox Width="100" Text="{Binding Denominator}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="Sky 宽度比例"/>
+                            <TextBox Width="100" Text="{Binding SkyWidthRatio}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- 地面 note 映射 -->
+                <GroupBox Header="地面 Note → Tap" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="轨道映射模式"/>
+                            <ComboBox Width="180" SelectedValue="{Binding NoteLaneMapping}" SelectedValuePath="Content">
+                                <ComboBoxItem Content="direct"/>
+                                <ComboBoxItem Content="4kTo6k"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock FontSize="10" Foreground="#888888" Margin="0,0,0,6"
+                                   Text="direct: Lane 直接传递；4kTo6k: 1→1, 2→2, 3→3, 4→5"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="默认 Kind（宽度）"/>
+                            <TextBox Width="60" Text="{Binding NoteDefaultKind}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- 地面 Hold 映射 -->
+                <GroupBox Header="地面 Hold → Hold" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="轨道映射模式"/>
+                            <ComboBox Width="180" SelectedValue="{Binding HoldLaneMapping}" SelectedValuePath="Content">
+                                <ComboBoxItem Content="direct"/>
+                                <ComboBoxItem Content="4kTo6k"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="默认 Width"/>
+                            <TextBox Width="60" Text="{Binding HoldDefaultWidth}"/>
+                        </StackPanel>
+                        <CheckBox Content="允许负时长（不修正 EndMs &lt; StartMs）" IsChecked="{Binding HoldAllowNegativeDuration}"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- Arc → SkyArea 映射 -->
+                <GroupBox Header="Arc (skyline=false) → SkyArea" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="X 坐标映射"/>
+                            <ComboBox Width="180" SelectedValue="{Binding ArcXMapping}" SelectedValuePath="Content">
+                                <ComboBoxItem Content="clamp01"/>
+                                <ComboBoxItem Content="compress"/>
+                                <ComboBoxItem Content="raw"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock FontSize="10" Foreground="#888888" Margin="0,0,0,6"
+                                   Text="clamp01: 限制[0,1]；compress: 中心压缩；raw: 不处理"/>
+                        <CheckBox Content="忽略 Y 坐标（约束在同一平面）" IsChecked="{Binding ArcIgnoreY}" Margin="0,0,0,4"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- Arctap → Flick 映射 -->
+                <GroupBox Header="Arctap (skyline=true) → Flick" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="方向推导模式"/>
+                            <ComboBox Width="180" SelectedValue="{Binding FlickDirectionMode}" SelectedValuePath="Tag">
+                                <ComboBoxItem Content="自动" Tag="auto"/>
+                                <ComboBoxItem Content="固定右" Tag="alwaysRight"/>
+                                <ComboBoxItem Content="固定左" Tag="alwaysLeft"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock FontSize="10" Foreground="#888888" Margin="0,0,0,6"
+                                   Text="自动：根据弧线方向判定；固定右：4；固定左：16"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="宽度模式"/>
+                            <ComboBox Width="180" SelectedValue="{Binding FlickWidthMode}" SelectedValuePath="Tag">
+                                <ComboBoxItem Content="默认" Tag="default"/>
+                                <ComboBoxItem Content="固定" Tag="fixed"/>
+                                <ComboBoxItem Content="随机" Tag="random"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="固定宽度 (WidthNum)"/>
+                            <TextBox Width="80" Text="{Binding FlickFixedWidthNum}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                            <TextBlock Width="200" VerticalAlignment="Center" Text="随机宽度最大值"/>
+                            <TextBox Width="80" Text="{Binding FlickWidthRandomMax}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">确定</Button>
+            <Button Width="90" IsCancel="True">取消</Button>
+        </StackPanel>
+    </Grid>
+</Window>

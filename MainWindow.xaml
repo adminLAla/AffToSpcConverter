@@ -1,8 +1,8 @@
-﻿<Window x:Class="AffToSpcConverter.MainWindow"
+<Window x:Class="AffToSpcConverter.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:AffToSpcConverter.Views"
-        Title="Arcaea → In Falsus 转换器" Height="1080" Width="1080">
+        Title="Arcaea → In Falsus 转换器" Height="960" Width="1080">
 
     <DockPanel>
 
@@ -189,6 +189,14 @@
 
                         <!-- 视图模式切换按钮 -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
+                            <Button Content="+ 添加" Padding="8,3" Margin="0,0,2,0"
+                                    Click="BtnAddNote_Click" FontSize="11"
+                                    ToolTip="在当前时间添加音符"/>
+                            <Button Content="− 删除" Padding="8,3" Margin="0,0,8,0"
+                                    Click="BtnDeleteNote_Click" FontSize="11"
+                                    ToolTip="删除当前选中的音符"/>
+                            <Button Content="退出预览" Padding="8,3" Margin="0,0,8,0"
+                                    Click="BtnExitPreview_Click" FontSize="11"/>
                             <Button x:Name="BtnMergedView" Content="合并视图" Padding="8,3"
                                     Margin="0,0,2,0" Click="OnMergedViewClick"
                                     FontSize="11"/>

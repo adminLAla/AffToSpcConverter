@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     // ===== 属性面板状态 =====
     private RenderItem? _selectedRenderItem;
 
+    private Views.AddNoteRequest? _pendingAddRequest;
+
     // 通用数字字段：(字段名, TextBox)
     private readonly List<(string fieldName, TextBox textBox)> _propFields = new();
     // 下拉框字段：(字段名, ComboBox) — 用于枚举/有限选项
@@ -43,6 +45,7 @@ public partial class MainWindow : Window
         DataContext = _vm;
         // 绑定音符选中事件
         PreviewControl.NoteSelected += OnNoteSelected;
+        PreviewControl.NotePlacementCommitted += OnNotePlacementCommitted;
     }
 
     // ===== 文件操作 =====
@@ -117,6 +120,7 @@ public partial class MainWindow : Window
 
             var opt = new ConverterOptions
             {
+                MappingRule = _vm.MappingRule,
                 Denominator = _vm.Denominator,
                 SkyWidthRatio = _vm.SkyWidthRatio,
                 XMapping = _vm.XMapping == "compress" ? "compress" : "clamp01",
@@ -128,7 +132,27 @@ public partial class MainWindow : Window
                 HoldWidthRandomEnabled = _vm.HoldWidthRandomEnabled,
                 HoldWidthRandomMax = _vm.HoldWidthRandomMax,
                 SkyareaStrategy2 = _vm.SkyareaStrategy2,
-                RandomSeed = _vm.RandomSeed
+                RandomSeed = _vm.RandomSeed,
+                // 自建规则参数映射
+                NoteLaneMapping = _vm.NoteLaneMapping,
+                NoteDefaultKind = _vm.NoteDefaultKind,
+                HoldLaneMapping = _vm.HoldLaneMapping,
+                HoldDefaultWidth = _vm.HoldDefaultWidth,
+                HoldAllowNegativeDuration = _vm.HoldAllowNegativeDuration,
+                ArcXMapping = _vm.ArcXMapping,
+                ArcIgnoreY = _vm.ArcIgnoreY,
+                FlickDirectionMode = _vm.FlickDirectionMode,
+                FlickFixedDir = _vm.FlickFixedDir,
+                FlickWidthMode = _vm.FlickWidthMode,
+                FlickFixedWidthNum = _vm.FlickFixedWidthNum,
+                FlickWidthRandomMax = _vm.FlickWidthRandomMax,
+                // 高级设置
+                GlobalTimeOffsetMs = _vm.GlobalTimeOffsetMs,
+                MinHoldDurationMs = _vm.MinHoldDurationMs,
+                MinSkyAreaDurationMs = _vm.MinSkyAreaDurationMs,
+                OutputBpmChanges = _vm.OutputBpmChanges,
+                DeduplicateTapThresholdMs = _vm.DeduplicateTapThresholdMs,
+                SortMode = _vm.SortMode
             };
 
             var result = AffToSpcConverter.Convert.AffToSpcConverter.Convert(aff, opt);
@@ -232,6 +256,143 @@ public partial class MainWindow : Window
         // 切换工具栏：预览模式用背景音乐工具栏，普通模式用文件工具栏
         ToolbarText.Visibility    = show ? Visibility.Collapsed : Visibility.Visible;
         ToolbarPreview.Visibility = show ? Visibility.Visible   : Visibility.Collapsed;
+    }
+
+    // ===== 音符增删 =====
+
+    private void BtnAddNote_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.PreviewEvents == null)
+        {
+            MessageBox.Show("请先加载或转换谱面。");
+            return;
+        }
+
+        int defaultDen = Math.Max(1, _vm.Denominator);
+        var typeNames = new[] { "Tap", "Hold", "Flick", "SkyArea" };
+        var dlg = new Views.AddNoteDialog(typeNames, defaultDen) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        var request = dlg.SelectedType switch
+        {
+            "Tap" => new Views.AddNoteRequest
+            {
+                Type = Views.AddNoteType.Tap,
+                GroundWidth = dlg.Kind
+            },
+            "Hold" => new Views.AddNoteRequest
+            {
+                Type = Views.AddNoteType.Hold,
+                GroundWidth = dlg.Kind
+            },
+            "Flick" => new Views.AddNoteRequest
+            {
+                Type = Views.AddNoteType.Flick,
+                Den = dlg.Den,
+                WidthNum = dlg.WidthNum,
+                Dir = dlg.Dir
+            },
+            "SkyArea" => new Views.AddNoteRequest
+            {
+                Type = Views.AddNoteType.SkyArea,
+                Den = dlg.Den,
+                WidthNum = dlg.WidthNum,
+                WidthNum2 = dlg.WidthNum2,
+                LeftEase = dlg.LeftEase,
+                RightEase = dlg.RightEase,
+                GroupId = dlg.GroupId
+            },
+            _ => null
+        };
+
+        if (request == null) return;
+
+        _pendingAddRequest = request;
+        PreviewControl.BeginAddNotePlacement(request);
+        _vm.Status = "请在预览中点击/拖动以放置音符（已自动吸附到辅助线）";
+    }
+
+    private void OnNotePlacementCommitted(Views.AddNotePlacement placement)
+    {
+        if (_vm.PreviewEvents == null || _pendingAddRequest == null) return;
+        var request = _pendingAddRequest;
+        _pendingAddRequest = null;
+
+        var events = _vm.PreviewEvents as List<ISpcEvent> ?? new List<ISpcEvent>(_vm.PreviewEvents);
+
+        int timeMs = placement.StartTimeMs;
+        int endTimeMs = placement.EndTimeMs;
+        int duration = Math.Max(1, endTimeMs - timeMs);
+
+        ISpcEvent? newEvent = request.Type switch
+        {
+            Views.AddNoteType.Tap => new SpcTap(timeMs, Math.Clamp(request.GroundWidth, 1, 4), placement.Lane),
+            Views.AddNoteType.Hold => new SpcHold(timeMs, placement.Lane, Math.Clamp(request.GroundWidth, 1, 6), duration),
+            Views.AddNoteType.Flick => new SpcFlick(timeMs,
+                placement.PosNum,
+                Math.Max(1, request.Den),
+                Math.Max(1, request.WidthNum),
+                request.Dir == 16 ? 16 : 4),
+            Views.AddNoteType.SkyArea => new SpcSkyArea(timeMs,
+                placement.PosNum, Math.Max(1, request.Den), Math.Max(0, request.WidthNum),
+                placement.PosNum2, Math.Max(1, request.Den), Math.Max(0, request.WidthNum2),
+                request.LeftEase, request.RightEase,
+                duration, Math.Max(0, request.GroupId)),
+            _ => null
+        };
+
+        if (newEvent == null) return;
+
+        events.Add(newEvent);
+        events.Sort((a, b) =>
+        {
+            int c = a.TimeMs.CompareTo(b.TimeMs);
+            if (c != 0) return c;
+            return ((int)a.Type).CompareTo((int)b.Type);
+        });
+
+        ApplyEventsAndRefresh(events);
+        _vm.Status = $"已添加 {newEvent.Type}（{newEvent.TimeMs}ms）";
+    }
+
+    private void ApplyEventsAndRefresh(List<ISpcEvent> events)
+    {
+        _vm.PreviewEvents = events;
+        var spcText = IO.SpcWriter.Write(events);
+        _vm.GeneratedSpcText = spcText;
+        _vm.SpcPreview = spcText;
+        PreviewControl.RefreshModel();
+    }
+
+    private void BtnDeleteNote_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.PreviewEvents == null || _selectedRenderItem?.SourceEvent == null)
+        {
+            MessageBox.Show("请先选中一个音符。");
+            return;
+        }
+
+        var events = _vm.PreviewEvents as List<ISpcEvent>;
+        if (events == null)
+        {
+            events = new List<ISpcEvent>(_vm.PreviewEvents);
+        }
+
+        int idx = _selectedRenderItem.SourceIndex;
+        if (idx < 0 || idx >= events.Count)
+        {
+            MessageBox.Show("选中索引无效。");
+            return;
+        }
+
+        var removed = events[idx];
+        events.RemoveAt(idx);
+
+        // 更新预览与文本
+        ApplyEventsAndRefresh(events);
+
+        HidePropPanel();
+        _vm.Status = $"已删除 {removed.Type}（{removed.TimeMs}ms）";
     }
 
     // ===== 视图模式切换（合并/分离）=====
@@ -809,5 +970,11 @@ public partial class MainWindow : Window
         base.OnClosed(e);
         StopPlayback();
         DisposeAudio();
+    }
+
+    private void BtnExitPreview_Click(object sender, RoutedEventArgs e)
+    {
+        MenuVisualPreview.IsChecked = false;
+        OnPreviewToggled(sender, e);
     }
 }

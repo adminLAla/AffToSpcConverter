@@ -1,7 +1,7 @@
 <Window x:Class="AffToSpcConverter.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="&#35774;&#32622;" Height="520" Width="560"
+        Title="设置" Height="620" Width="560"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -12,68 +12,96 @@
         <ScrollViewer Grid.Row="0">
             <StackPanel>
 
-                <!-- &#22522;&#30784;&#21442;&#25968; -->
-                <GroupBox Header="&#22522;&#30784;&#21442;&#25968;" Margin="0,0,0,10">
+                <!-- 映射规则 -->
+                <GroupBox Header="映射规则" Margin="0,0,0,10">
                     <StackPanel Margin="10">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#20998;&#27597;&#65288;Denominator&#65289;"/>
-                            <TextBox Width="100" Text="{Binding Denominator}"/>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="Sky &#23485;&#24230;&#27604;&#20363;"/>
-                            <TextBox Width="100" Text="{Binding SkyWidthRatio}"/>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="X &#22352;&#26631;&#26144;&#23556;&#27169;&#24335;"/>
-                            <ComboBox Width="160" SelectedValue="{Binding XMapping}" SelectedValuePath="Content">
-                                <ComboBoxItem Content="clamp01"/>
-                                <ComboBoxItem Content="compress"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="映射规则"/>
+                            <ComboBox Width="200" SelectedValue="{Binding MappingRule}" SelectedValuePath="Content">
+                                <ComboBoxItem Content="暴力映射(不推荐)"/>
+                                <ComboBoxItem Content="自建规则"/>
                             </ComboBox>
                         </StackPanel>
+                        <Button Width="200" HorizontalAlignment="Left" Margin="180,0,0,0"
+                                Click="OpenCustomMapping_Click"
+                                Content="编辑自建规则..."/>
                     </StackPanel>
                 </GroupBox>
 
-                <!-- &#38590;&#24230; / &#28151;&#38899;&#65288;&#21487;&#36873;&#65289; -->
-                <GroupBox Header="&#38590;&#24230; / &#28151;&#38899;&#65288;&#21487;&#36873;&#65289;" Margin="0,0,0,10">
+                <!-- 难度 / 混音（可选） -->
+                <GroupBox Header="难度 / 混音（可选）" Margin="0,0,0,10">
                     <StackPanel Margin="10">
-                        <CheckBox Content="&#21551;&#29992; Tap &#23485;&#24230;&#26679;&#24335;" IsChecked="{Binding TapWidthPatternEnabled}" Margin="0,0,0,6"/>
+                        <CheckBox Content="启用 Tap 宽度样式" IsChecked="{Binding TapWidthPatternEnabled}" Margin="0,0,0,6"/>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#26679;&#24335;&#65288;&#22914; 1,2,1,2&#65289;"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="样式（如 1,2,1,2）"/>
                             <TextBox Width="200" Text="{Binding TapWidthPattern}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#23494;&#38598;&#38459;&#20540;&#65288;ms&#65292;0=&#33258;&#21160;&#65289;"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="密集阻值（ms，0=自动）"/>
                             <TextBox Width="100" Text="{Binding DenseTapThresholdMs}"/>
                         </StackPanel>
 
-                        <CheckBox Content="&#38543;&#26426;&#21270; Hold &#23485;&#24230;" IsChecked="{Binding HoldWidthRandomEnabled}" Margin="0,12,0,6"/>
+                        <CheckBox Content="随机化 Hold 宽度" IsChecked="{Binding HoldWidthRandomEnabled}" Margin="0,12,0,6"/>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#26368;&#22823; Hold &#23485;&#24230;"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="最大 Hold 宽度"/>
                             <TextBox Width="100" Text="{Binding HoldWidthRandomMax}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#38543;&#26426;&#31295;&#23376;"/>
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="随机稿子"/>
                             <TextBox Width="100" Text="{Binding RandomSeed}"/>
                         </StackPanel>
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="&#22825;&#31354;&#65288;&#21487;&#36873;&#65289;" Margin="0,10,0,0">
+                <GroupBox Header="天空（可选）" Margin="0,10,0,0">
                     <StackPanel Margin="10">
-                        <CheckBox Content="SkyArea &#31532;&#20108;&#31574;&#30053;&#65288;&#34920;&#29616;&#22411;&#65289;" IsChecked="{Binding SkyareaStrategy2}"/>
+                        <CheckBox Content="SkyArea 第二策略（表现型）" IsChecked="{Binding SkyareaStrategy2}"/>
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="&#39044;&#35272;&#65288;&#21487;&#36873;&#65289;" Margin="0,10,0,0">
+                <!-- 高级设置 -->
+                <GroupBox Header="高级设置" Margin="0,10,0,0">
                     <StackPanel Margin="10">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="&#30446;&#26631; FPS"/>
+                            <TextBlock Width="220" VerticalAlignment="Center" Text="全局时间偏移（ms）"/>
+                            <TextBox Width="100" Text="{Binding GlobalTimeOffsetMs}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="220" VerticalAlignment="Center" Text="最小 Hold 时长（ms，短于此转为 Tap）"/>
+                            <TextBox Width="100" Text="{Binding MinHoldDurationMs}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="220" VerticalAlignment="Center" Text="最小 SkyArea 时长（ms，短于此丢弃）"/>
+                            <TextBox Width="100" Text="{Binding MinSkyAreaDurationMs}"/>
+                        </StackPanel>
+
+                        <CheckBox Content="输出 BPM 变速事件" IsChecked="{Binding OutputBpmChanges}" Margin="0,0,0,6"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="220" VerticalAlignment="Center" Text="Tap 去重阈值（ms，0=不合并）"/>
+                            <TextBox Width="100" Text="{Binding DeduplicateTapThresholdMs}"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="220" VerticalAlignment="Center" Text="排序模式"/>
+                            <ComboBox Width="140" SelectedValue="{Binding SortMode}" SelectedValuePath="Content">
+                                <ComboBoxItem Content="timeFirst"/>
+                                <ComboBoxItem Content="typeFirst"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="预览（可选）" Margin="0,10,0,0">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="目标 FPS"/>
                             <ComboBox Width="160" SelectedValuePath="Content" SelectedValue="{Binding PreviewTargetFps}">
                                 <ComboBoxItem Content="60"/>
                                 <ComboBoxItem Content="120"/>
@@ -81,7 +109,7 @@
                                 <ComboBoxItem Content="165"/>
                             </ComboBox>
                         </StackPanel>
-                        <CheckBox Content="&#26174;&#31034; FPS/&#24103;&#26102;&#38388;" IsChecked="{Binding ShowFpsStats}"/>
+                        <CheckBox Content="显示 FPS/帧时间" IsChecked="{Binding ShowFpsStats}"/>
                     </StackPanel>
                 </GroupBox>
 
@@ -89,8 +117,8 @@
         </ScrollViewer>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">&#30830;&#23450;</Button>
-            <Button Width="90" IsCancel="True">&#21462;&#28040;</Button>
+            <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">确定</Button>
+            <Button Width="90" IsCancel="True">取消</Button>
         </StackPanel>
     </Grid>
 </Window>

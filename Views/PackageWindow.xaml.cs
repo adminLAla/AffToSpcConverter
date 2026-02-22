@@ -10,6 +10,7 @@ namespace AffToSpcConverter.Views;
 public partial class PackageWindow : Window
 {
     private readonly PackageViewModel _vm = new PackageViewModel();
+    private const string MappingFileName = "mapping.json";
 
     public PackageWindow()
     {
@@ -23,16 +24,6 @@ public partial class PackageWindow : Window
         if (dialog.ShowDialog() == true)
         {
             _vm.SourceFilePath = dialog.FileName;
-        }
-    }
-
-    private void BtnBrowseMapping_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog();
-        dialog.Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*";
-        if (dialog.ShowDialog() == true)
-        {
-            _vm.MappingJsonPath = dialog.FileName;
         }
     }
 
@@ -54,7 +45,11 @@ public partial class PackageWindow : Window
         try
         {
             _vm.Status = "打包中...";
-            GameAssetPacker.Pack(_vm.SourceFilePath, _vm.OriginalFilename, _vm.MappingJsonPath, _vm.OutputDirectory);
+            var mappingPath = Path.Combine(AppContext.BaseDirectory, MappingFileName);
+            if (!File.Exists(mappingPath))
+                throw new FileNotFoundException($"未找到映射文件：{mappingPath}");
+
+            GameAssetPacker.Pack(_vm.SourceFilePath, _vm.OriginalFilename, mappingPath, _vm.OutputDirectory);
             _vm.Status = "打包成功！";
             MessageBox.Show("资源已成功打包！", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
         }

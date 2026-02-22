@@ -14,4 +14,10 @@ public partial class SettingsWindow : Window
         DialogResult = true;
         Close();
     }
+
+    private void OpenCustomMapping_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new CustomMappingWindow { Owner = this, DataContext = this.DataContext };
+        win.ShowDialog();
+    }
 }

@@ -11,9 +11,96 @@ public static class AffToSpcConverter
 {
     public static ConversionResult Convert(AffChart chart, ConverterOptions options)
     {
-        // ---- 解析 ----
-        // var chart = AffParser.Parse(affText); // 已移除重复解析
+        if (options.MappingRule == "暴力映射(不推荐)")
+            return ConvertBruteForce(chart, options);
 
+        return ConvertCustom(chart, options);
+    }
+
+    /// <summary>
+    /// 暴力映射：不做 clamp、不做合法性校验、不做后处理。
+    /// </summary>
+    private static ConversionResult ConvertBruteForce(AffChart chart, ConverterOptions options)
+    {
+        // 0) 全局基础映射：忽略 Offset，只取第一个 timing
+        var baseTiming = chart.Timings.FirstOrDefault() ?? new AffTiming(0, 120.0, 4.0);
+
+        var events = new List<ISpcEvent>
+        {
+            new SpcChart(baseTiming.Bpm, baseTiming.Beats)
+        };
+
+        int den = Math.Max(1, options.Denominator);
+        int baseSkyWidthNum = (int)Math.Round(options.SkyWidthRatio * den);
+
+        // 1) 地面音符映射
+        // note(t, lane) → tap(t, 1, lane)
+        foreach (var n in chart.Notes)
+        {
+            events.Add(new SpcTap(n.TimeMs, 1, n.Lane));
+        }
+
+        // hold(start, end, lane) → hold(start, lane, 1, end - start)
+        foreach (var h in chart.Holds)
+        {
+            int dur = h.T2Ms - h.T1Ms; // 暴力模式：允许 0 或负数，不修正
+            events.Add(new SpcHold(h.T1Ms, h.Lane, 1, dur));
+        }
+
+        // 2) 空中音符映射
+        int nextGroupId = 1;
+
+        foreach (var a in chart.Arcs)
+        {
+            if (a.Skyline)
+            {
+                // 2.2 skylineBoolean = true → flick（天空 tap：arctap）
+                foreach (var tn in a.ArcTapTimesMs)
+                {
+                    // 在 arctap 时刻对弧线做线性插值取 x
+                    double x = EasingUtil.EvalArcX(a, tn);
+                    int xNum = (int)Math.Round(x * den);
+                    int wNum = baseSkyWidthNum;
+                    int dir = EasingUtil.DirectionFromArc(a, tn);
+                    events.Add(new SpcFlick(tn, xNum, den, wNum, dir));
+                }
+            }
+            else
+            {
+                // 2.1 skylineBoolean = false → skyarea（蛇）
+                int x1Num = (int)Math.Round(a.X1 * den);
+                int x2Num = (int)Math.Round(a.X2 * den);
+                int w1Num = baseSkyWidthNum;
+                int w2Num = baseSkyWidthNum;
+
+                var (le, re) = EasingUtil.SlideTokenToSpcEdgeCodes(a.SlideEasing);
+
+                int dur = a.T2Ms - a.T1Ms; // 暴力模式：允许 0 或负数
+                events.Add(new SpcSkyArea(
+                    a.T1Ms,
+                    x1Num, den, w1Num,
+                    x2Num, den, w2Num,
+                    le, re,
+                    dur,
+                    nextGroupId++
+                ));
+            }
+        }
+
+        // 暴力模式不做后处理，只做稳定排序
+        var ordered = events
+            .OrderBy(e => e.TimeMs)
+            .ThenBy(e => (int)e.Type)
+            .ToList();
+
+        return new ConversionResult(ordered, new List<string>());
+    }
+
+    /// <summary>
+    /// 自建规则：原有完整转换逻辑（含 clamp、后处理等）。
+    /// </summary>
+    private static ConversionResult ConvertCustom(AffChart chart, ConverterOptions options)
+    {
         // ---- 基础节拍 ----
         var baseTiming = chart.Timings.FirstOrDefault() ?? new AffTiming(0, 120.0, 4.0);
         double baseBpm = baseTiming.Bpm;
@@ -23,6 +110,15 @@ public static class AffToSpcConverter
             new SpcChart(baseTiming.Bpm, baseTiming.Beats)
         };
 
+        // 输出 BPM 变速事件（高级设置）
+        if (options.OutputBpmChanges && chart.Timings.Count > 1)
+        {
+            foreach (var t in chart.Timings.Skip(1))
+            {
+                events.Add(new SpcBpm(Math.Max(0, t.OffsetMs + options.GlobalTimeOffsetMs), t.Bpm, t.Beats));
+            }
+        }
+
         // 可选：禁用 0/4 轨（旧功能）
         if (options.DisableLanes)
         {
@@ -30,60 +126,81 @@ public static class AffToSpcConverter
             events.Add(new SpcLane(0, 4, 0));
         }
 
+        int timeOffset = options.GlobalTimeOffsetMs;
+
         // ---- 地面音符 ----
         var taps = new List<SpcTap>();
         var holds = new List<SpcHold>();
 
         foreach (var n in chart.Notes)
         {
-            int lane = MapLane(n.Lane, options);
-            // 原：new SpcTap(n.TimeMs, lane, 1) -> (时间, 轨道, 宽度)
-            // 现：new SpcTap(n.TimeMs, 1, lane) -> (时间, 宽度, 轨道)
-            // 这里默认 kind=1
-            taps.Add(new SpcTap(n.TimeMs, 1, lane));
+            int lane = MapLaneCustom(n.Lane, options.NoteLaneMapping, options);
+            int kind = Math.Max(1, Math.Min(4, options.NoteDefaultKind));
+            int t = Math.Max(0, n.TimeMs + timeOffset);
+            taps.Add(new SpcTap(t, kind, lane));
         }
 
         foreach (var h in chart.Holds)
         {
-            int lane = MapLane(h.Lane, options);
-            int dur = Math.Max(0, h.T2Ms - h.T1Ms);
-            holds.Add(new SpcHold(h.T1Ms, lane, 1, dur));
+            int lane = MapLaneCustom(h.Lane, options.HoldLaneMapping, options);
+            int width = Math.Max(1, Math.Min(6, options.HoldDefaultWidth));
+            int t1 = Math.Max(0, h.T1Ms + timeOffset);
+            int dur = h.T2Ms - h.T1Ms;
+            if (!options.HoldAllowNegativeDuration)
+                dur = Math.Max(0, dur);
+
+            // 高级设置：最小 hold 时长，短于此转为 tap
+            if (options.MinHoldDurationMs > 0 && dur < options.MinHoldDurationMs)
+            {
+                taps.Add(new SpcTap(t1, Math.Max(1, Math.Min(4, width)), lane));
+                continue;
+            }
+
+            holds.Add(new SpcHold(t1, lane, width, dur));
         }
 
         // ---- 天空音符 ----
-        // 先分离列表，再做后处理
         var skyAreas = new List<SpcSkyArea>();
         var flicks = new List<SpcFlick>();
 
         int den = Math.Max(1, options.Denominator);
         int baseSkyWidthNum = MathUtil.ClampInt((int)Math.Round(options.SkyWidthRatio * den), 1, den);
+        int flickFixedWidthNum = MathUtil.ClampInt(options.FlickFixedWidthNum, 1, den);
+        int flickRandomMax = MathUtil.ClampInt(options.FlickWidthRandomMax, flickFixedWidthNum, den);
+        var flickWidthRng = options.FlickWidthMode == "random"
+            ? RandomUtil.Create(options.RandomSeed)
+            : null;
 
         int nextGroupId = 1;
 
         foreach (var a in chart.Arcs)
         {
-            // Arcaea 弧线 -> InFalsus 天空区域或滑键（按 Skyline 标记）
             if (a.Skyline)
             {
-                // Skyline 弧线包含 arctap -> 滑键
                 foreach (var tn in a.ArcTapTimesMs)
                 {
                     double x = EasingUtil.EvalArcX(a, tn);
-                    x = MapX(x, options.XMapping);
+                    x = MapXCustom(x, options.ArcXMapping);
 
-                    // 按宽度夹取，保证可见
-                    int widthNum = baseSkyWidthNum;
+                    int widthNum = options.FlickWidthMode switch
+                    {
+                        "fixed" => flickFixedWidthNum,
+                        "random" => flickWidthRng == null || flickRandomMax <= flickFixedWidthNum
+                            ? flickFixedWidthNum
+                            : flickWidthRng.Next(flickFixedWidthNum, flickRandomMax + 1),
+                        _ => baseSkyWidthNum
+                    };
                     int posNum = QuantizeXClampedByWidth(x, widthNum, den);
 
-                    int dir = EasingUtil.DirectionFromArc(a, tn);
-                    flicks.Add(new SpcFlick(tn, posNum, den, widthNum, dir));
+                    int dir = ResolveFlickDirection(a, tn, options);
+                    int t = Math.Max(0, tn + timeOffset);
+                    flicks.Add(new SpcFlick(t, posNum, den, widthNum, dir));
                 }
             }
             else
             {
-                // 普通弧线 -> 天空区域单段
-                double x1 = MapX(a.X1, options.XMapping);
-                double x2 = MapX(a.X2, options.XMapping);
+                double x1 = MapXCustom(a.X1, options.ArcXMapping);
+                double x2 = MapXCustom(a.X2, options.ArcXMapping);
 
                 int w1 = baseSkyWidthNum;
                 int w2 = baseSkyWidthNum;
@@ -94,8 +211,14 @@ public static class AffToSpcConverter
                 var (le, re) = EasingUtil.SlideTokenToSpcEdgeCodes(a.SlideEasing);
 
                 int dur = Math.Max(0, a.T2Ms - a.T1Ms);
+
+                // 高级设置：最小 skyarea 时长
+                if (options.MinSkyAreaDurationMs > 0 && dur < options.MinSkyAreaDurationMs)
+                    continue;
+
+                int t = Math.Max(0, a.T1Ms + timeOffset);
                 skyAreas.Add(new SpcSkyArea(
-                    a.T1Ms,
+                    t,
                     x1n, den, w1,
                     x2n, den, w2,
                     le, re,
@@ -134,7 +257,7 @@ public static class AffToSpcConverter
             options
         );
 
-        // (3) 大小键：只在“纯点按密集段”启用，并避开长按活动区间
+        // (3) 大小键：只在"纯点按密集段"启用，并避开长按活动区间
         if (options.TapWidthPatternEnabled)
         {
             int denseMs = options.DenseTapThresholdMs > 0
@@ -157,6 +280,20 @@ public static class AffToSpcConverter
             PatternUtils.RandomizeHoldWidthInPlace(holds, rng, options.HoldWidthRandomMax);
         }
 
+        // ---- 高级设置：Tap 去重 ----
+        if (options.DeduplicateTapThresholdMs > 0)
+        {
+            taps.Sort((a, b) => a.TimeMs.CompareTo(b.TimeMs));
+            for (int i = taps.Count - 1; i > 0; i--)
+            {
+                if (taps[i].TimeMs - taps[i - 1].TimeMs <= options.DeduplicateTapThresholdMs
+                    && taps[i].LaneIndex == taps[i - 1].LaneIndex)
+                {
+                    taps.RemoveAt(i);
+                }
+            }
+        }
+
         // ---- 收集 ----
         events.AddRange(taps);
         events.AddRange(holds);
@@ -164,12 +301,55 @@ public static class AffToSpcConverter
         events.AddRange(flicks);
 
         // 稳定排序
-        var ordered = events
-            .OrderBy(e => e.TimeMs)
-            .ThenBy(e => (int)e.Type)
-            .ToList();
+        IEnumerable<ISpcEvent> ordered;
+        if (options.SortMode == "typeFirst")
+        {
+            ordered = events
+                .OrderBy(e => (int)e.Type)
+                .ThenBy(e => e.TimeMs);
+        }
+        else
+        {
+            ordered = events
+                .OrderBy(e => e.TimeMs)
+                .ThenBy(e => (int)e.Type);
+        }
 
-        return new ConversionResult(ordered, new List<string>());
+        return new ConversionResult(ordered.ToList(), new List<string>());
+    }
+
+    private static int MapLaneCustom(int affLane, string laneMapping, ConverterOptions options)
+    {
+        if (laneMapping == "4kTo6k")
+        {
+            // 1→1, 2→2, 3→3, 4→5
+            if (affLane == 4) return 5;
+            return affLane;
+        }
+
+        // "direct" — also respect legacy RecommendedKeymap
+        if (options.RecommendedKeymap && affLane == 4) return 5;
+        return affLane;
+    }
+
+    private static double MapXCustom(double x, string mapping)
+    {
+        return mapping switch
+        {
+            "raw" => x,
+            "compress" => 0.5 + (MathUtil.Clamp01(x) - 0.5) * 0.9,
+            _ => MathUtil.Clamp01(x), // clamp01
+        };
+    }
+
+    private static int ResolveFlickDirection(AffArc a, int tMs, ConverterOptions options)
+    {
+        return options.FlickDirectionMode switch
+        {
+            "alwaysRight" => 4,
+            "alwaysLeft" => 16,
+            _ => EasingUtil.DirectionFromArc(a, tMs), // auto
+        };
     }
 
     private static int MapLane(int affLane, ConverterOptions options)

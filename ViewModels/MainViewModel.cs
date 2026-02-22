@@ -10,6 +10,10 @@ public class MainViewModel : INotifyPropertyChanged
     private string _status = "Ready.";
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
+    // 映射规则
+    private string _mappingRule = "自建规则";
+    public string MappingRule { get => _mappingRule; set { _mappingRule = value; OnPropertyChanged(); } }
+
     private int _denominator = 24;
     public int Denominator { get => _denominator; set { _denominator = value; OnPropertyChanged(); } }
 
@@ -47,6 +51,64 @@ public class MainViewModel : INotifyPropertyChanged
 
     private int _randomSeed = 12345;
     public int RandomSeed { get => _randomSeed; set { _randomSeed = value; OnPropertyChanged(); } }
+
+    // ---- 自建规则：参数映射 ----
+
+    private string _noteLaneMapping = "direct";
+    public string NoteLaneMapping { get => _noteLaneMapping; set { _noteLaneMapping = value; OnPropertyChanged(); } }
+
+    private int _noteDefaultKind = 1;
+    public int NoteDefaultKind { get => _noteDefaultKind; set { _noteDefaultKind = value; OnPropertyChanged(); } }
+
+    private string _holdLaneMapping = "direct";
+    public string HoldLaneMapping { get => _holdLaneMapping; set { _holdLaneMapping = value; OnPropertyChanged(); } }
+
+    private int _holdDefaultWidth = 1;
+    public int HoldDefaultWidth { get => _holdDefaultWidth; set { _holdDefaultWidth = value; OnPropertyChanged(); } }
+
+    private bool _holdAllowNegativeDuration;
+    public bool HoldAllowNegativeDuration { get => _holdAllowNegativeDuration; set { _holdAllowNegativeDuration = value; OnPropertyChanged(); } }
+
+    private string _arcXMapping = "clamp01";
+    public string ArcXMapping { get => _arcXMapping; set { _arcXMapping = value; OnPropertyChanged(); } }
+
+    private bool _arcIgnoreY = true;
+    public bool ArcIgnoreY { get => _arcIgnoreY; set { _arcIgnoreY = value; OnPropertyChanged(); } }
+
+    private string _flickDirectionMode = "auto";
+    public string FlickDirectionMode { get => _flickDirectionMode; set { _flickDirectionMode = value; OnPropertyChanged(); } }
+
+    private int _flickFixedDir = 4;
+    public int FlickFixedDir { get => _flickFixedDir; set { _flickFixedDir = value; OnPropertyChanged(); } }
+
+    private string _flickWidthMode = "default";
+    public string FlickWidthMode { get => _flickWidthMode; set { _flickWidthMode = value; OnPropertyChanged(); } }
+
+    private int _flickFixedWidthNum = 6;
+    public int FlickFixedWidthNum { get => _flickFixedWidthNum; set { _flickFixedWidthNum = value; OnPropertyChanged(); } }
+
+    private int _flickWidthRandomMax = 12;
+    public int FlickWidthRandomMax { get => _flickWidthRandomMax; set { _flickWidthRandomMax = value; OnPropertyChanged(); } }
+
+    // ---- 高级设置 ----
+
+    private int _globalTimeOffsetMs = 0;
+    public int GlobalTimeOffsetMs { get => _globalTimeOffsetMs; set { _globalTimeOffsetMs = value; OnPropertyChanged(); } }
+
+    private int _minHoldDurationMs = 0;
+    public int MinHoldDurationMs { get => _minHoldDurationMs; set { _minHoldDurationMs = value; OnPropertyChanged(); } }
+
+    private int _minSkyAreaDurationMs = 0;
+    public int MinSkyAreaDurationMs { get => _minSkyAreaDurationMs; set { _minSkyAreaDurationMs = value; OnPropertyChanged(); } }
+
+    private bool _outputBpmChanges;
+    public bool OutputBpmChanges { get => _outputBpmChanges; set { _outputBpmChanges = value; OnPropertyChanged(); } }
+
+    private int _deduplicateTapThresholdMs = 0;
+    public int DeduplicateTapThresholdMs { get => _deduplicateTapThresholdMs; set { _deduplicateTapThresholdMs = value; OnPropertyChanged(); } }
+
+    private string _sortMode = "timeFirst";
+    public string SortMode { get => _sortMode; set { _sortMode = value; OnPropertyChanged(); } }
 
     // ---- 预览 ----
     private string _affPreview = "";
@@ -94,8 +156,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // 类似视频里的速度：1.20 h/s（这里用 PixelsPerSecond 表示“1秒=多少像素”）
-    private double _previewPixelsPerSecond = 1000; // 默认更接近游戏观感
+    private double _previewPixelsPerSecond = 1000;
     public double PreviewPixelsPerSecond
     {
         get => _previewPixelsPerSecond;
@@ -141,7 +202,7 @@ public class MainViewModel : INotifyPropertyChanged
         set { _isPlaying = value; OnPropertyChanged(); }
     }
 
-    private int _previewTargetFps = 144;
+    private int _previewTargetFps = 120;
     public int PreviewTargetFps
     {
         get => _previewTargetFps;

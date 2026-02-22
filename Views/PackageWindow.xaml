@@ -1,11 +1,10 @@
 <Window x:Class="AffToSpcConverter.Views.PackageWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="&#25171;&#21253;&#36164;&#28304;" Height="400" Width="600"
+        Title="打包资源" Height="400" Width="600"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -19,34 +18,29 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <!-- &#28304;&#25991;&#20214; -->
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="&#28304;&#25991;&#20214;&#65306;" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <!-- Source -->
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="源文件：" VerticalAlignment="Center" Margin="0,0,10,10"/>
         <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding SourceFilePath}" Margin="0,0,10,10"/>
         <Button Grid.Row="0" Grid.Column="2" Content="..." Width="30" Margin="0,0,0,10" Click="BtnBrowseSource_Click"/>
 
-        <!-- &#26144;&#23556; JSON -->
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="&#26144;&#23556; JSON&#65306;" VerticalAlignment="Center" Margin="0,0,10,10"/>
-        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MappingJsonPath}" Margin="0,0,10,10"/>
-        <Button Grid.Row="1" Grid.Column="2" Content="..." Width="30" Margin="0,0,0,10" Click="BtnBrowseMapping_Click"/>
+        <!-- Output -->
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="输出目录：" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding OutputDirectory}" Margin="0,0,10,10"/>
+        <Button Grid.Row="1" Grid.Column="2" Content="..." Width="30" Margin="0,0,0,10" Click="BtnBrowseOutput_Click"/>
 
-        <!-- &#36755;&#20986;&#30446;&#24405; -->
-        <TextBlock Grid.Row="2" Grid.Column="0" Text="&#36755;&#20986;&#30446;&#24405;&#65306;" VerticalAlignment="Center" Margin="0,0,10,10"/>
-        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding OutputDirectory}" Margin="0,0,10,10"/>
-        <Button Grid.Row="2" Grid.Column="2" Content="..." Width="30" Margin="0,0,0,10" Click="BtnBrowseOutput_Click"/>
+        <!-- Original filename -->
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="原始文件名：" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding OriginalFilename}" Margin="0,0,0,10"
+                 ToolTip="例如：bgm/MainTitle.ogg"/>
 
-        <!-- &#21407;&#22987;&#25991;&#20214;&#21517; -->
-        <TextBlock Grid.Row="3" Grid.Column="0" Text="&#21407;&#22987;&#25991;&#20214;&#21517;&#65306;" VerticalAlignment="Center" Margin="0,0,10,10"/>
-        <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding OriginalFilename}" Margin="0,0,0,10"
-                 ToolTip="&#20363;&#22914;&#65306;bgm/MainTitle.ogg"/>
-
-        <!-- &#29366;&#24577; -->
-        <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Text="{Binding Status}" Foreground="Gray"
+        <!-- Status -->
+        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Text="{Binding Status}" Foreground="Gray"
                    TextWrapping="Wrap" Margin="0,10,0,10"/>
 
-        <!-- &#25353;&#38062; -->
-        <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="&#25171;&#21253;" Width="100" Margin="0,0,10,0" Click="BtnPackage_Click"/>
-            <Button Content="&#20851;&#38381;" Width="100" IsCancel="True"/>
+        <!-- Buttons -->
+        <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="打包" Width="100" Margin="0,0,10,0" Click="BtnPackage_Click"/>
+            <Button Content="关闭" Width="100" IsCancel="True"/>
         </StackPanel>
     </Grid>
 </Window>
