@@ -121,6 +121,7 @@ public class MainViewModel : INotifyPropertyChanged
     public string? GeneratedSpcText { get; set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    // 触发属性变更通知。
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 

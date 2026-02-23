@@ -7,6 +7,7 @@ namespace AffToSpcConverter.Convert.Preview
 {
     public static class SpcRenderModelBuilder
     {
+        // 构建预览渲染模型。
         public static RenderModel Build(IEnumerable<ISpcEvent> events)
         {
             var model = new RenderModel();

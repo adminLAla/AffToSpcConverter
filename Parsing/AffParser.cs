@@ -28,6 +28,7 @@ public static class AffParser
 
     private static readonly Regex RxArcTap = new(@"arctap\((\d+)\)", RegexOptions.Compiled);
 
+    // 解析输入文本并生成Aff数据模型。
     public static AffChart Parse(string affText)
     {
         var chart = new AffChart();

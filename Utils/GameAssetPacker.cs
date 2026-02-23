@@ -10,55 +10,56 @@ namespace AffToSpcConverter.Utils;
 
 public class GameAssetPacker
 {
-    // Ӳ������Կ (���û��ṩ�� XtsCore ��ȡ)
+    // 游戏资源加密使用的固定数据密钥与 tweak 密钥。
     private static readonly byte[] DataKey = HexToBytes("D98633AC10EB3D600FBECBA023FADF58");
     private static readonly byte[] TweakKey = HexToBytes("B3BC4F5C8FBFC6B2126A50EFAE032210");
 
+    // 读取资源文件并按映射表加密打包输出。
     public static void Pack(string sourceFilePath, string originalGamePath, string mappingJsonPath, string outputDirectory)
     {
-        // 1. Validate paths
+        // 1. 校验输入文件与映射文件路径。
         if (!File.Exists(sourceFilePath))
             throw new FileNotFoundException($"Source file not found: {sourceFilePath}");
         if (!File.Exists(mappingJsonPath))
             throw new FileNotFoundException($"Mapping JSON not found: {mappingJsonPath}");
 
-        // 2. Parse Mapping JSON
+        // 2. 解析映射 JSON。
         string jsonContent = File.ReadAllText(mappingJsonPath);
         var mapping = ParseMapping(jsonContent);
 
-        // Find entry
+        // 查找目标原始路径对应的映射条目。
         var entry = FindEntry(mapping, originalGamePath);
         string targetGuid = entry.Guid ?? throw new Exception("GUID not found for entry.");
 
-        // 3. Prepare output
+        // 3. 准备输出目录与目标文件路径。
         if (!Directory.Exists(outputDirectory)) Directory.CreateDirectory(outputDirectory);
         string outputFilePath = Path.Combine(outputDirectory, targetGuid);
 
-        // 4. Read Source
+        // 4. 读取源文件内容。
         byte[] sourceBytes = File.ReadAllBytes(sourceFilePath);
 
-        // 5. Preprocess (Remove BOM for .txt)
+        // 5. 预处理：对 .txt 文件去除 UTF-8 BOM。
         string ext = Path.GetExtension(sourceFilePath).ToLowerInvariant();
         if (ext == ".txt" && sourceBytes.Length >= 3 && sourceBytes[0] == 0xEF && sourceBytes[1] == 0xBB && sourceBytes[2] == 0xBF)
         {
             sourceBytes = sourceBytes.Skip(3).ToArray();
         }
 
-        // 6. Add padding logic
-        // User requested incrementing bytes starting from 00.
-        // The game likely expects the file to be aligned to 16 bytes, AND possibly requires at least some padding bytes if the parser overreads.
-        // Update: Always add at least one block of padding if it lands exactly on boundary? 
-        // Or strictly align to next 16-byte boundary.
-        // If the file size is already multiple of 16, user reports crash/issue. 
-        // Let's force adding a full 16 bytes of padding if remainder is 0, or just standard alignment.
-        // However, looking at the previous specific request "at the end of 0A add incrementing bytes starting from 00",
-        // and knowing standard PKCS7 padding behaviors (always pad), let's try ensuring we always append padding to align to the *next* 16 byte boundary.
+        // 6. 补齐策略：按 16 字节分组对齐，并在末尾追加递增填充字节。
+        // 游戏解析器可能会读取到文件尾后方，因此这里保留额外填充空间。
+        // 采用“总是补齐”策略：即使已对齐，也补一个完整 16 字节块。
+        // 行为类似 PKCS7，但填充值改为 00、01、02... 的递增序列。
+        // 若文件长度刚好是 16 的倍数，paddingNeeded 仍会取 16。
+        // 若未对齐，则补到下一个 16 字节边界。
+        // 递增填充字节便于后续调试与验证。
+        // 该策略用于兼容目标游戏在边界情况下的读取行为。
+        // 下面开始按上述规则计算补齐长度。
         
         int remainder = sourceBytes.Length % 16;
         int paddingNeeded = 16 - remainder; 
         
-        // If remainder is 0, paddingNeeded is 16. This behaves like PKCS7 where we always pad.
-        // This ensures there are always extra bytes at the end for the parser to consume safely if it expects valid termination.
+        // remainder 为 0 时 paddingNeeded 会变成 16（额外补一个完整块）。
+        // 这样可确保文件尾总存在可读取的补齐字节。
         
         byte[] newSource = new byte[sourceBytes.Length + paddingNeeded];
         Array.Copy(sourceBytes, newSource, sourceBytes.Length);
@@ -69,13 +70,14 @@ public class GameAssetPacker
         }
         sourceBytes = newSource;
 
-        // 7. Encrypt using correct XTS logic
+        // 7. 使用 XTS 模式加密补齐后的数据。
         byte[] encryptedBytes = XtsEncrypt(sourceBytes);
 
-        // 8. Write
+        // 8. 写出加密结果文件。
         File.WriteAllBytes(outputFilePath, encryptedBytes);
     }
 
+    // 使用 XTS 逻辑加密字节数组。
     private static byte[] XtsEncrypt(byte[] data)
     {
         if (data.Length == 0) return data;
@@ -101,26 +103,26 @@ public class GameAssetPacker
                     byte[] sectorBytes = new byte[len];
                     Array.Copy(data, offset, sectorBytes, 0, len);
 
-                    // Tweak for this sector
+                    // 构造当前扇区编号对应的 16 字节 tweak 输入块。
                     byte[] sectorIdxBytes = new byte[16];
                     Array.Copy(BitConverter.GetBytes(sectorIndex), 0, sectorIdxBytes, 0, 4); // Little endian 4 bytes
                     
                     byte[] tweak = new byte[16];
                     encTweak.TransformBlock(sectorIdxBytes, 0, 16, tweak, 0);
 
-                    // Process blocks
+                    // 计算当前扇区的完整块数量与尾部剩余字节数。
                     int fullBlocks = len / blockSize;
                     int remainder = len % blockSize;
                     
-                    // If remainder > 0, we have specific XTS stealing logic
-                    // Standard blocks count
+                    // 若存在尾块残余，需要预留最后一个完整块给 CTS 处理。
+                    // standardBlocks 表示可按普通 XTS 直接处理的完整块数量。
                     int standardBlocks = (remainder > 0) ? fullBlocks - 1 : fullBlocks;
 
                     byte[] encryptedSector = new byte[len];
                     byte[] curTweak = new byte[16];
                     Array.Copy(tweak, curTweak, 16);
 
-                    // 1. Encrypt standard blocks
+                    // 1. 先加密可按标准 XTS 处理的完整块。
                     for (int i = 0; i < standardBlocks; i++)
                     {
                         int blkOff = i * blockSize;
@@ -132,49 +134,49 @@ public class GameAssetPacker
                         curTweak = TweakMul2(curTweak);
                     }
 
-                    // 2. Handle CTS if needed
+                    // 2. 若存在尾部残余，则执行 XTS-CTS（密文窃取）处理。
                     if (remainder > 0)
                     {
-                        // We are at block m-1 (full) and m (partial).
-                        // curTweak is T_{m-1}.
-                        // Next tweak is T_m.
+                        // 当前处理第 m-1 个完整块与第 m 个部分块。
+                        // curTweak 对应 T_{m-1}。
+                        // tweakM 对应 T_m。
                         byte[] tweakMm1 = new byte[16]; Array.Copy(curTweak, tweakMm1, 16);
                         byte[] tweakM = TweakMul2(tweakMm1);
 
                         int offMm1 = standardBlocks * blockSize;
                         int offM = offMm1 + blockSize;
 
-                        // Plaintext P_{m-1}
+                        // 读取明文块 P_{m-1}。
                         byte[] P_Mm1 = new byte[blockSize];
                         Array.Copy(sectorBytes, offMm1, P_Mm1, 0, blockSize);
 
-                        // Plaintext P_m (partial)
+                        // 读取明文部分块 P_m。
                         byte[] P_M = new byte[remainder];
                         Array.Copy(sectorBytes, offM, P_M, 0, remainder);
 
-                        // Encrypt P_{m-1} with T_{m-1} -> produces CC (draft ciphertext)
+                        // 计算临时密文块 CC（由 P_{m-1} 经 T_{m-1} 加密得到）。
                         byte[] CC = new byte[blockSize];
-                        // Xor T
+                        // 第一步：与 T_{m-1} 异或。
                         for(int k=0; k<16; k++) CC[k] = (byte)(P_Mm1[k] ^ tweakMm1[k]);
-                        // Encrypt
+                        // 第二步：执行分组加密。
                         byte[] temp = new byte[blockSize];
                         encData.TransformBlock(CC, 0, 16, temp, 0);
-                        // Xor T
+                        // 第三步：再次与 T_{m-1} 异或。
                         for (int k = 0; k < 16; k++) CC[k] ^= tweakMm1[k];
 
-                        // The first 'remainder' bytes of CC become C_m (the partial ciphertext at end)
-                        // This effectively "steals" ciphertext from block m-1 to fill block m
+                        // 取 CC 的前 remainder 字节作为末尾部分密文 C_m。
+                        // 相当于从前一块“借用”密文字节完成窃取。
                         Array.Copy(CC, 0, encryptedSector, offM, remainder);
 
-                        // Construct PP: P_m concatenated with the *rest* of CC
+                        // 构造 PP：P_m 与 CC 剩余字节拼接。
                         byte[] PP = new byte[blockSize];
                         Array.Copy(P_M, 0, PP, 0, remainder);
                         Array.Copy(CC, remainder, PP, remainder, blockSize - remainder);
 
-                        // Encrypt PP with T_m -> produces C_{m-1} (the full ciphertext block at m-1 position)
-                        // Xor T_m
-                        // Encrypt
-                        // Xor T_m
+                        // 使用 T_m 加密 PP，得到位置 m-1 的完整密文块 C_{m-1}。
+                        // ProcessBlockEnc 内部会先与 tweak 异或。
+                        // 然后执行 AES-ECB 加密。
+                        // 最后再次异或 tweak 并写回输出缓冲区。
                         ProcessBlockEnc(PP, tweakM, encData, encryptedSector, offMm1);
                     }
 
@@ -187,20 +189,22 @@ public class GameAssetPacker
         }
     }
 
+    // 按 XTS 单块流程加密一个 16 字节分组。
     private static void ProcessBlockEnc(byte[] input16, byte[] tweak, ICryptoTransform enc, byte[] outBuf, int outOffset)
     {
         byte[] tmp = new byte[16];
-        // P xor T
+        // 先将输入块与 tweak 异或。
         for(int i=0; i<16; i++) tmp[i] = (byte)(input16[i] ^ tweak[i]);
-        // E(...)
+        // 执行 AES 分组加密。
         byte[] encBlk = new byte[16];
         enc.TransformBlock(tmp, 0, 16, encBlk, 0);
-        // C xor T
+        // 将加密结果再次与 tweak 异或。
         for (int i = 0; i < 16; i++) encBlk[i] ^= tweak[i];
         
         Array.Copy(encBlk, 0, outBuf, outOffset, 16);
     }
 
+    // 计算 XTS 中 tweak 的 GF(2^128) 乘 2。
     private static byte[] TweakMul2(byte[] t)
     {
         bool c = (t[15] & 0x80) != 0;
@@ -211,6 +215,7 @@ public class GameAssetPacker
         return r;
     }
 
+    // 将十六进制字符串转换为字节数组。
     private static byte[] HexToBytes(string hex)
     {
         byte[] bytes = new byte[hex.Length / 2];
@@ -219,8 +224,9 @@ public class GameAssetPacker
         return bytes;
     }
 
-    // --- JSON Helpers ---
+    // --- JSON 辅助方法 ---
 
+    // 解析相关数据并返回结果。
     private static MappingData ParseMapping(string jsonContent)
     {
         var options = new JsonSerializerOptions
@@ -259,18 +265,19 @@ public class GameAssetPacker
         return mapping;
     }
 
+    // 按路径在映射表中查找目标条目。
     private static MappingEntry FindEntry(MappingData mapping, string originalPath)
     {
-        // Exact match
+        // 1) 优先按完整路径精确匹配。
         var e = mapping.Entries!.FirstOrDefault(x => string.Equals(x.FullLookupPath, originalPath, StringComparison.OrdinalIgnoreCase));
         if (e != null) return e;
 
-        // Normalized slash
+        // 2) 将路径分隔符统一后再次匹配。
         string norm = originalPath.Replace('\\', '/');
         e = mapping.Entries!.FirstOrDefault(x => string.Equals(x.FullLookupPath?.Replace('\\', '/'), norm, StringComparison.OrdinalIgnoreCase));
         if (e != null) return e;
 
-        // Endswith
+        // 3) 最后尝试以后缀匹配（仅唯一命中时接受）。
         var matches = mapping.Entries!.Where(x => x.FullLookupPath != null && x.FullLookupPath.EndsWith(originalPath, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 1) return matches[0];
         if (matches.Count > 1) throw new Exception($"Multiple matches for '{originalPath}'. Use full path.");
@@ -278,6 +285,7 @@ public class GameAssetPacker
         throw new Exception($"Entry not found: {originalPath}");
     }
 
+    // 不区分大小写读取 JSON 属性。
     private static bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
     {
         foreach (JsonProperty prop in element.EnumerateObject())

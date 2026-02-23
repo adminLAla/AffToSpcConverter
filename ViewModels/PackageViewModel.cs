@@ -18,6 +18,7 @@ public class PackageViewModel : INotifyPropertyChanged
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    // 触发属性变更通知。
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

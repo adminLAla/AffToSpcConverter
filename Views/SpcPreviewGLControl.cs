@@ -19,62 +19,96 @@ namespace AffToSpcConverter.Views
 
     public sealed class AddNoteRequest
     {
+        // 待放置音符的类型。
         public AddNoteType Type { get; init; }
+        // 地面音符占用的轨道宽度（用于 Tap/Hold）。
         public int GroundWidth { get; init; } = 1;
+        // 天空坐标分母（将位置/宽度分子换算为比例）。
         public int Den { get; init; } = 24;
+        // 天空音符起始宽度或宽度参数分子。
         public int WidthNum { get; init; } = 1;
+        // 天空区域终止宽度参数分子（用于 SkyArea 等需要双端宽度的类型）。
         public int WidthNum2 { get; init; } = 1;
+        // Flick 方向编码（16 表示左，4 表示右）。
         public int Dir { get; init; } = 4;
+        // 天空区域左边缘缓动类型编号。
         public int LeftEase { get; init; }
+        // 天空区域右边缘缓动类型编号。
         public int RightEase { get; init; }
+        // 新增音符所属分组编号（用于需要分组的事件类型）。
         public int GroupId { get; init; } = 1;
     }
 
     public sealed record AddNotePlacement(
+        // 本次放置时使用的参数模板。
         AddNoteRequest Request,
+        // 放置起始时间（毫秒）。
         int StartTimeMs,
+        // 放置结束时间（毫秒）；对单点音符通常与起始时间相同。
         int EndTimeMs,
+        // 放置到的地面轨道编号（若类型使用地面轨道）。
         int Lane,
+        // 放置起点的天空位置分子（相对 Den）。
         int PosNum,
+        // 放置终点的天空位置分子（相对 Den）。
         int PosNum2
     );
 
-    /// <summary>
-    /// High-performance Skia preview control supporting split and merged overlay views.
-    /// </summary>
+    // 高性能 Skia 预览控件，支持分离视图与合并叠加视图。
+
+
     public sealed class SpcPreviewGLControl : SKElement, IDisposable
     {
-        // ===== ��Ⱦѭ�� =====
+        // ===== 渲染循环 =====
+        // 后台渲染循环线程。
         private Thread? _renderThread;
+        // 渲染线程运行标记。
         private volatile bool _running;
+        // 控件默认目标帧率。
         private const double DefaultTargetFps = 120.0;
+        // 当前目标帧间隔（毫秒），由 TargetFps 换算得到。
         private double _frameTimeMs = 1000.0 / DefaultTargetFps;
 
-        // ===== ֡�� / ֡ʱ�� =====
+        // ===== 帧率统计 / 帧时长 =====
+        // 当前采样窗口内累计渲染帧数。
         private int _frameCount;
+        // 上次 FPS 采样窗口起点时间戳。
         private long _lastFpsTick;
+        // 最近一次计算得到的 FPS。
         private int _fps;
+        // 平滑后的单帧耗时（毫秒）。
         private double _frameTimeSmoothed;
+        // 上一帧的时间戳，用于计算帧时长。
         private long _prevFrameTick;
+        // FPS 统计采样窗口时长（毫秒）。
         private const int FpsSampleMs = 100;
 
-        // ===== ���� =====
+        // ===== 渲染快照 =====
+        // 供渲染线程读取的判定时间快照（double 按 long 位存储）。
         private long _snapJudgeTimeMsBits;
+        // 供渲染线程读取的缩放值快照（double 按 long 位存储）。
         private long _snapPxPerMsBits;
+        // 供渲染线程读取的选中项索引快照。
         private volatile int _snapSelectedIndex = -1;
+        // 当前用于绘制的渲染模型快照。
         private RenderModel? _snapModel;
+        // 保护渲染模型快照读写的锁。
         private readonly object _modelLock = new();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // 以线程安全方式写入双精度快照值，供渲染线程读取。
         private static void WriteDouble(ref long storage, double value)
             => Interlocked.Exchange(ref storage, BitConverter.DoubleToInt64Bits(value));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // 以线程安全方式读取双精度快照值。
         private static double ReadDouble(ref long storage)
             => BitConverter.Int64BitsToDouble(Interlocked.Read(ref storage));
 
-        // ===== View mode =====
+        // ===== 视图模式 =====
+        // 当前预览显示模式（分离/合并）。
         private volatile PreviewViewMode _viewMode = PreviewViewMode.Split;
+        // 控制天空区与地面区的布局方式。
         public PreviewViewMode ViewMode
         {
             get => _viewMode;
@@ -86,89 +120,126 @@ namespace AffToSpcConverter.Views
             }
         }
 
-        // ===== ���� =====
-        // ����ģʽ���������沢��
-        // �ϲ�ģʽ������ȫ������վ��е���
-        private SKRect _groundRect, _skyRect;
-        private float _judgeY, _contentLeft, _contentW, _panelH, _ctrlW, _ctrlH;
+        // ===== 布局区域 =====
+        // 分离模式下天空与地面面板并排显示。
+        // 合并模式下天空面板覆盖在地面面板上方并居中。
+        // 地面面板在控件中的绘制区域。
+        private SKRect _groundRect;
+        // 天空面板在控件中的绘制区域。
+        private SKRect _skyRect;
+        // 判定线在控件坐标中的 Y 值。
+        private float _judgeY;
+        // 内容区域（不含左侧标尺）起始 X。
+        private float _contentLeft;
+        // 内容区域宽度（不含左侧标尺）。
+        private float _contentW;
+        // 预览面板高度（从 TopPad 到判定线）。
+        private float _panelH;
+        // 控件当前宽度缓存。
+        private float _ctrlW;
+        // 控件当前高度缓存。
+        private float _ctrlH;
+        // 保护布局缓存读写的锁。
         private readonly object _layoutLock = new();
 
-        // ===== ���� =====
+        // ===== 显示参数 =====
+        // 时间轴最小缩放（每毫秒像素数）。
         private const double MinPxPerMs = 0.02;
+        // 时间轴最大缩放（每毫秒像素数）。
         private const double MaxPxPerMs = 1.20;
+        // 左侧标尺区域固定宽度。
         private const double RulerW = 60.0;
+        // 判定线距离控件底部的默认偏移。
         private const double JudgeFromBottom = 100.0;
+        // 顶部预留内边距。
         private const double TopPad = 8.0;
+        // 地面区域轨道总数。
         private const int GroundLanes = 6;
+        // 天空区域横向划分数量（用于网格与位置换算）。
         private const int SkyDivisions = 8;
-        private const float TapHalfH = 22f;   // triH(45) / 2�����¸� 22px
+        // 地面 Tap 矩形半高（由视觉尺寸调参得到）。
+        private const float TapHalfH = 22f;
+        // Flick 三角形主体高度。
         private const float FlickTriH = 45f;
+        // 合并视图中天空面板相对地面面板的宽度比例。
         private const float SkyToGroundWidthRatio = 4f / 6f;
 
-        // ===== ���ʻ��� =====
-        private static readonly SKPaint BgPaint = MkFill(15, 15, 18);
-        private static readonly SKPaint PanelBgPaint = MkFill(18, 18, 24);
-        private static readonly SKPaint PanelBorder = MkStroke(55, 55, 70, 1);
-        private static readonly SKPaint GroundGridPaint = MkStroke(35, 35, 46, 1);
-        private static readonly SKPaint GroundLaneBasePaint = MkFill(0, 0, 0);
-        private static readonly SKPaint GroundLane0OverlayPaint = MkFill(190, 130, 255, 80);
-        private static readonly SKPaint GroundLane5OverlayPaint = MkFill(255, 90, 90, 80);
-        private static readonly SKPaint SkyOverlayBg = MkFill(25, 20, 40, 50);
-        private static readonly SKPaint SkyBorderPaint = MkStroke(80, 60, 130, 1, alpha: 120);
-        private static readonly SKPaint SkyGridPaint = MkStroke(50, 40, 80, 1, alpha: 80);
-        private static readonly SKPaint SkyGridPaintSplit = MkStroke(35, 35, 46, 1);
-        private static readonly SKPaint GroundLabelPaint = MkText(120, 120, 140, 11);
-        private static readonly SKPaint SkyLabelPaint = MkText(140, 110, 200, 11);
-        private static readonly SKPaint MeasurePaint = MkStroke(80, 86, 112, 1.8f);
-        private static readonly SKPaint BeatPaint = MkStroke(55, 58, 78, 1.4f, new float[] { 1, 6 });
-        private static readonly SKPaint RulerLabelPaint = MkText(130, 130, 155, 10);
-        private static readonly SKPaint JudgePaint = MkStroke(220, 60, 30, 2f);
-        private static readonly SKPaint JudgeTextPaint = MkText(220, 60, 30, 12);
-        private static readonly SKPaint TapFillDeepBlue = MkFill(40, 70, 150);
-        private static readonly SKPaint TapStrokeDeepBlue = MkStroke(80, 120, 210, 1);
-        private static readonly SKPaint TapFillWhite = MkFill(170, 210, 255);
-        private static readonly SKPaint TapStrokeWhite = MkStroke(210, 235, 255, 1);
-        private static readonly SKPaint TapFillPurple = MkFill(210, 140, 255);
-        private static readonly SKPaint TapStrokePurple = MkStroke(235, 190, 255, 1);
-        private static readonly SKPaint TapFillRed = MkFill(255, 90, 90);
-        private static readonly SKPaint TapStrokeRed = MkStroke(255, 140, 140, 1);
-        private static readonly SKPaint HoldFillDeepBlue = MkFill(40, 70, 150, 120);
-        private static readonly SKPaint HoldStrokeDeepBlue = MkStroke(80, 120, 210, 1, alpha: 200);
-        private static readonly SKPaint HoldFillWhite = MkFill(170, 210, 255, 120);
-        private static readonly SKPaint HoldStrokeWhite = MkStroke(210, 235, 255, 1, alpha: 220);
-        private static readonly SKPaint HoldFillPurple = MkFill(210, 140, 255, 120);
-        private static readonly SKPaint HoldStrokePurple = MkStroke(235, 190, 255, 1, alpha: 220);
-        private static readonly SKPaint HoldFillRed = MkFill(255, 90, 90, 120);
-        private static readonly SKPaint HoldStrokeRed = MkStroke(255, 140, 140, 1, alpha: 220);
-        private static readonly SKPaint FlickFillLeftPaint = MkFill(220, 200, 80);
-        private static readonly SKPaint FlickStrokeLeftPaint = MkStroke(255, 240, 120, 1.5f);
-        private static readonly SKPaint FlickFillRightPaint = MkFill(80, 200, 120);
-        private static readonly SKPaint FlickStrokeRightPaint = MkStroke(120, 240, 160, 1.5f);
-        private static readonly SKPaint SkyAreaFillPaint = MkFill(140, 100, 230, 70);
-        private static readonly SKPaint SkyAreaStrokePaint = MkStroke(180, 150, 255, 1, alpha: 160);
-        private static readonly SKPaint SkyAreaStripePaint = MkStripePaint(255, 255, 255, 25, 80f);
-        // ѡ�и�������ɫ������͸������߲�͸����
-        private static readonly SKPaint SelectedFillPaint = MkFill(255, 255, 255, 70);
-        private static readonly SKPaint SelectedStrokePaint = MkStroke(255, 255, 255, 2);
-        private static readonly SKPaint FpsPaint = MkText(0, 255, 0, 12);
+        // ===== 画笔资源 =====
+        private static readonly SKPaint BgPaint = MkFill(15, 15, 18); // 整个控件背景底色。
+        private static readonly SKPaint PanelBgPaint = MkFill(18, 18, 24); // 面板区域背景色。
+        private static readonly SKPaint PanelBorder = MkStroke(55, 55, 70, 1); // 面板边框描边。
+        private static readonly SKPaint GroundGridPaint = MkStroke(35, 35, 46, 1); // 地面区域网格线。
+        private static readonly SKPaint GroundLaneBasePaint = MkFill(0, 0, 0); // 特殊轨道底色基底。
+        private static readonly SKPaint GroundLane0OverlayPaint = MkFill(190, 130, 255, 80); // 左侧特殊轨道覆盖色。
+        private static readonly SKPaint GroundLane5OverlayPaint = MkFill(255, 90, 90, 80); // 右侧特殊轨道覆盖色。
+        private static readonly SKPaint SkyOverlayBg = MkFill(25, 20, 40, 50); // 合并模式天空层半透明底色。
+        private static readonly SKPaint SkyBorderPaint = MkStroke(80, 60, 130, 1, alpha: 120); // 天空面板边框。
+        private static readonly SKPaint SkyGridPaint = MkStroke(50, 40, 80, 1, alpha: 80); // 天空面板网格线（合并模式）。
+        private static readonly SKPaint SkyGridPaintSplit = MkStroke(35, 35, 46, 1); // 天空面板网格线（分离模式）。
+        private static readonly SKPaint GroundLabelPaint = MkText(120, 120, 140, 11); // GROUND 标签文字。
+        private static readonly SKPaint SkyLabelPaint = MkText(140, 110, 200, 11); // SKY 标签文字。
+        private static readonly SKPaint MeasurePaint = MkStroke(80, 86, 112, 1.8f); // 小节线画笔。
+        private static readonly SKPaint BeatPaint = MkStroke(55, 58, 78, 1.4f, new float[] { 1, 6 }); // 拍线虚线画笔。
+        private static readonly SKPaint RulerLabelPaint = MkText(130, 130, 155, 10); // 标尺刻度文字。
+        private static readonly SKPaint JudgePaint = MkStroke(220, 60, 30, 2f); // 判定线画笔。
+        private static readonly SKPaint JudgeTextPaint = MkText(220, 60, 30, 12); // 判定线标签文字。
+        private static readonly SKPaint TapFillDeepBlue = MkFill(40, 70, 150); // 普通窄地面音符填充色。
+        private static readonly SKPaint TapStrokeDeepBlue = MkStroke(80, 120, 210, 1); // 普通窄地面音符描边色。
+        private static readonly SKPaint TapFillWhite = MkFill(170, 210, 255); // 宽地面 Tap 填充色。
+        private static readonly SKPaint TapStrokeWhite = MkStroke(210, 235, 255, 1); // 宽地面 Tap 描边色。
+        private static readonly SKPaint TapFillPurple = MkFill(210, 140, 255); // 0 轨地面 Tap 填充色。
+        private static readonly SKPaint TapStrokePurple = MkStroke(235, 190, 255, 1); // 0 轨地面 Tap 描边色。
+        private static readonly SKPaint TapFillRed = MkFill(255, 90, 90); // 5 轨地面 Tap 填充色。
+        private static readonly SKPaint TapStrokeRed = MkStroke(255, 140, 140, 1); // 5 轨地面 Tap 描边色。
+        private static readonly SKPaint HoldFillDeepBlue = MkFill(40, 70, 150, 120); // 普通窄地面 Hold 填充色。
+        private static readonly SKPaint HoldStrokeDeepBlue = MkStroke(80, 120, 210, 1, alpha: 200); // 普通窄地面 Hold 描边色。
+        private static readonly SKPaint HoldFillWhite = MkFill(170, 210, 255, 120); // 宽地面 Hold 填充色。
+        private static readonly SKPaint HoldStrokeWhite = MkStroke(210, 235, 255, 1, alpha: 220); // 宽地面 Hold 描边色。
+        private static readonly SKPaint HoldFillPurple = MkFill(210, 140, 255, 120); // 0 轨地面 Hold 填充色。
+        private static readonly SKPaint HoldStrokePurple = MkStroke(235, 190, 255, 1, alpha: 220); // 0 轨地面 Hold 描边色。
+        private static readonly SKPaint HoldFillRed = MkFill(255, 90, 90, 120); // 5 轨地面 Hold 填充色。
+        private static readonly SKPaint HoldStrokeRed = MkStroke(255, 140, 140, 1, alpha: 220); // 5 轨地面 Hold 描边色。
+        private static readonly SKPaint FlickFillLeftPaint = MkFill(220, 200, 80); // 左向 Flick 填充色。
+        private static readonly SKPaint FlickStrokeLeftPaint = MkStroke(255, 240, 120, 1.5f); // 左向 Flick 描边色。
+        private static readonly SKPaint FlickFillRightPaint = MkFill(80, 200, 120); // 右向 Flick 填充色。
+        private static readonly SKPaint FlickStrokeRightPaint = MkStroke(120, 240, 160, 1.5f); // 右向 Flick 描边色。
+        private static readonly SKPaint SkyAreaFillPaint = MkFill(140, 100, 230, 70); // SkyArea 半透明填充。
+        private static readonly SKPaint SkyAreaStrokePaint = MkStroke(180, 150, 255, 1, alpha: 160); // SkyArea 外轮廓描边。
+        private static readonly SKPaint SkyAreaStripePaint = MkStripePaint(255, 255, 255, 25, 80f); // SkyArea 条纹叠加效果。
+        // 选中态使用半透明填充与描边叠加，增强可见性。
+        private static readonly SKPaint SelectedFillPaint = MkFill(255, 255, 255, 70); // 选中项高亮填充。
+        private static readonly SKPaint SelectedStrokePaint = MkStroke(255, 255, 255, 2); // 选中项高亮描边。
+        private static readonly SKPaint FpsPaint = MkText(0, 255, 0, 12); // FPS 统计文字。
 
+        // 标尺步长相对一个小节的倍数候选，用于根据缩放自适应选择刻度密度。
         private static readonly double[] RulerMultiples = { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0 };
 
-        // ===== ���� =====
+        // ===== 缓存 =====
+        // 标尺标签文本缓存（key 为刻度序号）。
         private readonly Dictionary<int, string> _rulerTextCache = new();
+        // 上次生成标尺文本时使用的缩放值，用于判断缓存是否失效。
         private double _rulerCachePxPerMs;
+        // Flick 形状路径缓存（按 RenderItem 实例和天空面板尺寸缓存）。
         private readonly Dictionary<int, (float skyLeft, float skyWidth, SKPath path)> _flickPathCache = new();
 
-        // ===== ����ѡ���¼� =====
+        // ===== 交互与选中事件 =====
+        // 点击或切换选中项时抛出的事件。
         public event Action<RenderItem?>? NoteSelected;
+        // 完成新增音符放置后抛出的提交事件。
         public event Action<AddNotePlacement>? NotePlacementCommitted;
 
+        // 当前待放置的音符请求；为空表示未处于新增模式。
         private AddNoteRequest? _pendingAddRequest;
+        // 是否正在拖拽确定新增音符的终点。
         private bool _placingNoteDrag;
+        // 新增音符拖拽起点时间（毫秒）。
         private int _placeStartTimeMs;
+        // 新增音符拖拽起点轨道。
         private int _placeStartLane;
+        // 新增音符拖拽起点天空位置分子。
         private int _placeStartPosNum;
 
+        // 初始化预览控件状态，并注册加载/卸载事件。
         public SpcPreviewGLControl()
         {
             Focusable = true;
@@ -178,14 +249,17 @@ namespace AffToSpcConverter.Views
             Unloaded += OnUnloaded;
         }
 
+        // 控件加载后重算布局并启动渲染循环。
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             RecalcLayout();
             StartRenderLoop();
         }
 
+        // 控件卸载时停止渲染循环。
         private void OnUnloaded(object sender, RoutedEventArgs e) => StopRenderLoop();
 
+        // 启动后台渲染线程并初始化帧率统计计时。
         private void StartRenderLoop()
         {
             if (_running) return;
@@ -201,6 +275,7 @@ namespace AffToSpcConverter.Views
             _renderThread.Start();
         }
 
+        // 停止后台渲染线程并等待线程退出。
         private void StopRenderLoop()
         {
             _running = false;
@@ -208,8 +283,10 @@ namespace AffToSpcConverter.Views
             _renderThread = null;
         }
 
+        // 缓存 UI 线程重绘委托，避免渲染线程循环中重复捕获。
         private Action? _invalidateAction;
 
+        // 按目标帧率循环触发界面重绘请求。
         private void RenderLoop()
         {
             _invalidateAction = InvalidateVisual;
@@ -242,14 +319,16 @@ namespace AffToSpcConverter.Views
             }
         }
 
-        // ===== ��С�仯 =====
+        // ===== 尺寸变化 =====
 
+        // 控件尺寸变化时重新计算预览布局。
         protected override void OnRenderSizeChanged(SizeChangedInfo info)
         {
             base.OnRenderSizeChanged(info);
             RecalcLayout();
         }
 
+        // 根据控件大小计算天空区、地面区、判定线与内容区域矩形。
         private void RecalcLayout()
         {
             double w = ActualWidth, h = ActualHeight;
@@ -274,7 +353,7 @@ namespace AffToSpcConverter.Views
 
                 if (_viewMode == PreviewViewMode.Split)
                 {
-                    // Side by side: ground right, sky left
+                    // 分离模式：地面在右侧，天空在左侧。
                     float skyW = contentW * 0.50f;
                     float gndW = contentW - skyW;
                     _skyRect = new SKRect(contentLeft, (float)TopPad, contentLeft + skyW, (float)TopPad + panelH);
@@ -282,7 +361,7 @@ namespace AffToSpcConverter.Views
                 }
                 else
                 {
-                    // Merged: ground = full width, sky = centered at 4/6 width of ground
+                    // 合并模式：地面占满宽度，天空按 4/6 比例居中叠加。
                     _groundRect = new SKRect(contentLeft, (float)TopPad, contentLeft + contentW, (float)TopPad + panelH);
                     float skyW = _groundRect.Width * SkyToGroundWidthRatio;
                     float skyLeft = _groundRect.MidX - skyW * 0.5f;
@@ -295,13 +374,15 @@ namespace AffToSpcConverter.Views
             ClearRulerTextCache();
         }
 
-        // ===== Dependency Properties =====
+        // ===== 依赖属性 =====
 
+        // 供预览控件展示的 SPC 事件列表。
         public IReadOnlyList<ISpcEvent>? Events
         {
             get => (IReadOnlyList<ISpcEvent>?)GetValue(EventsProperty);
             set => SetValue(EventsProperty, value);
         }
+        // Events 的依赖属性定义；变化时重建渲染模型并清理几何缓存。
         public static readonly DependencyProperty EventsProperty =
             DependencyProperty.Register(nameof(Events), typeof(IReadOnlyList<ISpcEvent>), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(null, (d, _) =>
@@ -314,11 +395,13 @@ namespace AffToSpcConverter.Views
                     c.ClearRulerTextCache();
                 }));
 
+        // 基础滚动速度（每秒像素数），不含 Speed 倍率。
         public double PixelsPerSecond
         {
             get => (double)GetValue(PixelsPerSecondProperty);
             set => SetValue(PixelsPerSecondProperty, value);
         }
+        // PixelsPerSecond 的依赖属性定义；变化时同步更新 PxPerMs。
         public static readonly DependencyProperty PixelsPerSecondProperty =
             DependencyProperty.Register(nameof(PixelsPerSecond), typeof(double), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(240.0, (d, _) =>
@@ -327,11 +410,13 @@ namespace AffToSpcConverter.Views
                     c.UpdatePxPerMs();
                 }));
 
+        // 预览速度倍率，用于缩放时间轴滚动速度。
         public double Speed
         {
             get => (double)GetValue(SpeedProperty);
             set => SetValue(SpeedProperty, value);
         }
+        // Speed 的依赖属性定义；变化时同步更新 PxPerMs。
         public static readonly DependencyProperty SpeedProperty =
             DependencyProperty.Register(nameof(Speed), typeof(double), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(1.0, (d, _) =>
@@ -340,22 +425,26 @@ namespace AffToSpcConverter.Views
                     c.UpdatePxPerMs();
                 }));
 
+        // 根据速度倍率和像素密度更新时间轴缩放（毫秒到像素）。
         private void UpdatePxPerMs()
         {
             var speed = Math.Max(0.01, Speed);
             PxPerMs = PixelsPerSecond * speed / 1000.0;
         }
 
+        // 当前用于绘制的只读渲染模型快照。
         public RenderModel? Model
         {
             get { lock (_modelLock) return _snapModel; }
         }
 
+        // 判定线对应时间（整数毫秒），用于常规交互更新。
         public int JudgeTimeMs
         {
             get => (int)GetValue(JudgeTimeMsProperty);
             set => SetValue(JudgeTimeMsProperty, value);
         }
+        // JudgeTimeMs 的依赖属性定义；变化时写入渲染线程快照。
         public static readonly DependencyProperty JudgeTimeMsProperty =
             DependencyProperty.Register(nameof(JudgeTimeMs), typeof(int), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(0, (d, _) =>
@@ -364,11 +453,13 @@ namespace AffToSpcConverter.Views
                     WriteDouble(ref c._snapJudgeTimeMsBits, c.JudgeTimeMs);
                 }));
 
+        // 判定线对应时间（双精度毫秒），用于更平滑的滚动/缩放。
         public double JudgeTimeMsPrecise
         {
             get => (double)GetValue(JudgeTimeMsPreciseProperty);
             set => SetValue(JudgeTimeMsPreciseProperty, value);
         }
+        // JudgeTimeMsPrecise 的依赖属性定义；变化时写入渲染线程快照。
         public static readonly DependencyProperty JudgeTimeMsPreciseProperty =
             DependencyProperty.Register(nameof(JudgeTimeMsPrecise), typeof(double), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(0.0, (d, _) =>
@@ -377,11 +468,13 @@ namespace AffToSpcConverter.Views
                     WriteDouble(ref c._snapJudgeTimeMsBits, c.JudgeTimeMsPrecise);
                 }));
 
+        // 当前时间轴缩放值（每毫秒像素数）。
         public double PxPerMs
         {
             get => (double)GetValue(PxPerMsProperty);
             set => SetValue(PxPerMsProperty, value);
         }
+        // PxPerMs 的依赖属性定义；变化时更新渲染快照并清理标尺缓存。
         public static readonly DependencyProperty PxPerMsProperty =
             DependencyProperty.Register(nameof(PxPerMs), typeof(double), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(0.12, (d, _) =>
@@ -392,11 +485,13 @@ namespace AffToSpcConverter.Views
                     c.ClearRulerTextCache();
                 }));
 
+        // 渲染线程目标帧率。
         public int TargetFps
         {
             get => (int)GetValue(TargetFpsProperty);
             set => SetValue(TargetFpsProperty, value);
         }
+        // TargetFps 的依赖属性定义；变化时更新渲染循环帧间隔。
         public static readonly DependencyProperty TargetFpsProperty =
             DependencyProperty.Register(nameof(TargetFps), typeof(int), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata((int)DefaultTargetFps, (d, _) =>
@@ -406,40 +501,55 @@ namespace AffToSpcConverter.Views
                     Volatile.Write(ref c._frameTimeMs, 1000.0 / fps);
                 }));
 
+        // 是否在右上角显示 FPS 与帧时长统计。
         public bool ShowFpsStats
         {
             get => (bool)GetValue(ShowFpsStatsProperty);
             set => SetValue(ShowFpsStatsProperty, value);
         }
+        // ShowFpsStats 的依赖属性定义。
         public static readonly DependencyProperty ShowFpsStatsProperty =
             DependencyProperty.Register(nameof(ShowFpsStats), typeof(bool), typeof(SpcPreviewGLControl),
                 new FrameworkPropertyMetadata(true));
 
-        // ===== ���� =====
-        private bool _dragTime, _dragZoom;
+        // ===== 交互输入 =====
+        // 左键拖拽时间轴滚动是否进行中。
+        private bool _dragTime;
+        // 右键拖拽缩放是否进行中。
+        private bool _dragZoom;
+        // 本次拖拽开始时的鼠标位置。
         private Point _dragStart;
+        // 本次拖拽开始时的判定时间（整数毫秒）。
         private int _judgeTimeStart;
+        // 本次拖拽开始时的缩放值。
         private double _pxPerMsStart;
+        // 当前选中渲染项索引。
         private int _selectedItemIndex = -1;
-        private bool _isDragClick; // distinguish click from drag
+        // 当前这次鼠标按下是否仍可视为点击（未移动成拖拽）。
+        private bool _isDragClick;
 
+        // 外部绑定用的选中项索引，同时同步写入渲染线程快照。
         public int SelectedItemIndex
         {
             get => _selectedItemIndex;
             set { _selectedItemIndex = value; _snapSelectedIndex = value; }
         }
 
+        // 进入添加音符放置模式并保存待放置参数。
         public void BeginAddNotePlacement(AddNoteRequest request)
         {
             _pendingAddRequest = request;
             _placingNoteDrag = false;
         }
 
+        // 返回当前控件内判定线的 Y 坐标。
         public double GetJudgeY() => Math.Max(TopPad + 20, ActualHeight - JudgeFromBottom);
 
+        // 将给定纵坐标换算为预览时间（毫秒）。
         private double TimeAtY(double judgeY, double y)
             => ReadDouble(ref _snapJudgeTimeMsBits) + (judgeY - y) / Math.Max(1e-6, PxPerMs);
 
+        // 处理滚轮缩放/滚动：Ctrl 缩放时间轴，否则上下移动时间位置。
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
             base.OnMouseWheel(e);
@@ -466,6 +576,7 @@ namespace AffToSpcConverter.Views
             e.Handled = true;
         }
 
+        // 处理鼠标按下：开始拖拽/缩放，或进入新增音符放置起点。
         protected override void OnMouseDown(MouseButtonEventArgs e)
         {
             base.OnMouseDown(e);
@@ -487,8 +598,10 @@ namespace AffToSpcConverter.Views
             else if (e.ChangedButton == MouseButton.Right) { _dragZoom = true; CaptureMouse(); e.Handled = true; }
         }
 
+        // 上次处理鼠标移动的 TickCount，用于节流高频移动事件。
         private int _lastMouseMoveTick;
 
+        // 处理鼠标移动，更新拖拽滚动或缩放状态。
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
@@ -521,6 +634,7 @@ namespace AffToSpcConverter.Views
             }
         }
 
+        // 处理鼠标释放，结束拖拽并在点击场景下执行选中命中。
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
             base.OnMouseUp(e);
@@ -547,6 +661,7 @@ namespace AffToSpcConverter.Views
             }
         }
 
+        // 鼠标离开控件时取消拖拽/放置状态并释放鼠标捕获。
         protected override void OnMouseLeave(MouseEventArgs e)
         {
             base.OnMouseLeave(e);
@@ -559,6 +674,7 @@ namespace AffToSpcConverter.Views
             if (_dragTime || _dragZoom) { _dragTime = false; _dragZoom = false; ReleaseMouseCapture(); }
         }
 
+        // 在新增音符模式下记录起点，或直接提交单点音符。
         private void HandleAddNoteMouseDown(Point pos)
         {
             var request = _pendingAddRequest;
@@ -581,6 +697,7 @@ namespace AffToSpcConverter.Views
             CaptureMouse();
         }
 
+        // 在新增音符模式下计算终点并提交拖拽型音符放置结果。
         private void HandleAddNoteMouseUp(Point pos)
         {
             var request = _pendingAddRequest;
@@ -611,6 +728,7 @@ namespace AffToSpcConverter.Views
             NotePlacementCommitted?.Invoke(new AddNotePlacement(request, startTime, endTimeMs, startLane, startPos, endPosNum));
         }
 
+        // 将鼠标位置转换为放置参数（时间、轨道或天空坐标），超出有效区域时返回 false。
         private bool TryGetPlacementPoint(Point pos, AddNoteRequest request, out int timeMs, out int lane, out int posNum)
         {
             timeMs = 0;
@@ -665,6 +783,7 @@ namespace AffToSpcConverter.Views
             return true;
         }
 
+        // 按当前谱面 BPM 标尺将时间吸附到小节线或拍线附近。
         private int SnapTimeMs(double rawTimeMs, double pxPerMs)
         {
             RenderModel? model;
@@ -697,6 +816,7 @@ namespace AffToSpcConverter.Views
             return Math.Max(0, (int)Math.Round(snapped));
         }
 
+        // 根据点击位置在预览中命中并选中最近的音符。
         private void HandleClick(Point pos)
         {
             double judgeY = GetJudgeY();
@@ -725,14 +845,14 @@ namespace AffToSpcConverter.Views
                 float yStart = (float)(judgeY - (item.TimeMs    - judgeTimeMs) * pxPerMs);
                 float yEnd   = (float)(judgeY - (item.EndTimeMs - judgeTimeMs) * pxPerMs);
 
-                // Flick ���������������� FlickTriH ���أ���Ҫ��չ�������з�Χ
+                // Flick 三角形顶部会额外上延，命中框需扩展顶部范围。
                 float extraTop = item.Type == RenderItemType.SkyFlick ? FlickTriH : 0;
                 float top    = Math.Min(yStart, yEnd) - extraTop - 8;
                 float bottom = Math.Max(yStart, yEnd) + 8;
 
                 if (clickY < top || clickY > bottom) continue;
 
-                // ���� X �����з�Χ
+                // 先根据音符类型计算横向命中范围。
                 float itemLeft, itemRight;
                 switch (item.Type)
                 {
@@ -749,7 +869,7 @@ namespace AffToSpcConverter.Views
                     }
                     case RenderItemType.SkyFlick:
                     {
-                        // Flick ֻ��һ���˵�λ��
+                        // Flick 只有一个位置点，按显示宽度扩展命中范围。
                         int den    = Math.Max(1, item.Den);
                         float cx   = sky.Left + sky.Width * Math.Clamp(item.X0 / (float)den, 0, 1);
                         float wPx  = sky.Width * Math.Clamp(item.W0 / (float)den, 0, 1);
@@ -760,8 +880,8 @@ namespace AffToSpcConverter.Views
                     }
                     case RenderItemType.SkyArea:
                     {
-                        // SkyArea ʹ�����(X0/W0)���յ�(X1/W1)�İ�Χ�����ϣ�
-                        // ȷ����������ϰ벿�֣��յ�ࣩҲ�����С�
+                        // SkyArea 使用起点/终点包围盒并集作为命中范围。
+                        // 保证较窄一端也有最小命中宽度，避免难以点中。
                         int den = Math.Max(1, item.Den);
 
                         float cx0   = sky.Left + sky.Width * Math.Clamp(item.X0 / (float)den, 0, 1);
@@ -795,10 +915,11 @@ namespace AffToSpcConverter.Views
             NoteSelected?.Invoke(best);
         }
 
-        /// <summary>
-        /// ǿ�Ƹ��ݵ�ǰ�¼�ˢ����Ⱦģ�͡�
-        /// ��������ԭ�б��ھ͵��޸������������
-        /// </summary>
+        // 根据当前事件列表强制刷新渲染模型。
+        // 适用于对原事件列表就地修改后的刷新。
+
+
+        // 根据当前事件列表重建渲染模型并清理相关缓存。
         public void RefreshModel()
         {
             var model = Events != null ? SpcRenderModelBuilder.Build(Events) : null;
@@ -808,8 +929,9 @@ namespace AffToSpcConverter.Views
             ClearRulerTextCache();
         }
 
-        // ===== ��Ⱦ =====
+        // ===== 渲染 =====
 
+        // 渲染回调：绘制背景、标尺、音符、判定线和帧率信息。
         protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
         {
             base.OnPaintSurface(e);
@@ -875,7 +997,8 @@ namespace AffToSpcConverter.Views
                 PaintFps(canvas, w);
         }
 
-        // ===== �ϲ����� =====
+        // ===== 合并视图背景 =====
+        // 绘制合并视图模式下的地面背景、天空叠加层和网格。
         private static void PaintMergedBackground(SKCanvas canvas, SKRect ground, SKRect sky,
             float contentLeft, float w, float h, float judgeY)
         {
@@ -895,7 +1018,7 @@ namespace AffToSpcConverter.Views
                 canvas.DrawLine(x, ground.Top, x, judgeY, GroundGridPaint);
             }
 
-            // Sky overlay
+            // 绘制天空叠加层。
             canvas.DrawRect(sky.Left, sky.Top, sky.Width, judgeY - sky.Top, SkyOverlayBg);
             canvas.DrawLine(sky.Left, sky.Top, sky.Left, judgeY, SkyBorderPaint);
             canvas.DrawLine(sky.Right, sky.Top, sky.Right, judgeY, SkyBorderPaint);
@@ -912,7 +1035,8 @@ namespace AffToSpcConverter.Views
             DrawText(canvas, "SKY", sky.Left + 6, ground.Top + 18, SkyLabelPaint);
         }
 
-        // ===== ���뱳�� =====
+        // ===== 分离视图背景 =====
+        // 绘制分离视图模式下的天空面板与地面面板背景。
         private static void PaintSplitBackground(SKCanvas canvas, SKRect sky, SKRect ground,
             float contentLeft, float w, float h, float judgeY)
         {
@@ -921,7 +1045,7 @@ namespace AffToSpcConverter.Views
             canvas.Save();
             canvas.ClipRect(new SKRect(contentLeft, sky.Top, ground.Right, judgeY));
 
-            // Sky panel (left)
+            // 绘制左侧天空面板。
             canvas.DrawRect(sky.Left, sky.Top, sky.Width, judgeY - sky.Top, PanelBgPaint);
             canvas.DrawRect(sky.Left, sky.Top, sky.Width, judgeY - sky.Top, PanelBorder);
             for (int i = 1; i < SkyDivisions; i++)
@@ -930,7 +1054,7 @@ namespace AffToSpcConverter.Views
                 canvas.DrawLine(x, sky.Top, x, judgeY, SkyGridPaintSplit);
             }
 
-            // Ground panel (right)
+            // 绘制右侧地面面板。
             canvas.DrawRect(ground.Left, ground.Top, ground.Width, judgeY - ground.Top, PanelBgPaint);
             canvas.DrawRect(ground.Left, ground.Top, ground.Width, judgeY - ground.Top, PanelBorder);
             PaintGroundLaneBackgrounds(canvas, ground, judgeY);
@@ -946,12 +1070,14 @@ namespace AffToSpcConverter.Views
             DrawText(canvas, "GROUND", ground.Left + 6, ground.Top + 4, GroundLabelPaint);
         }
 
+        // 绘制判定线及其文本标签。
         private static void PaintJudge(SKCanvas canvas, float judgeY, float contentLeft, float w)
         {
             canvas.DrawLine(contentLeft, judgeY, w, judgeY, JudgePaint);
             DrawText(canvas, "JUDGE", contentLeft + 4, judgeY + 4, JudgeTextPaint);
         }
 
+        // 绘制小节线、拍线和标尺标签，并横跨可视面板区域。
         private void PaintRuler(SKCanvas canvas, SKRect panel,
             float judgeY, double pxPerMs, double judgeTimeMs, RenderModel? model)
         {
@@ -982,7 +1108,7 @@ namespace AffToSpcConverter.Views
                 _rulerCachePxPerMs = pxPerMs;
             }
 
-            // Determine the rightmost edge to draw ruler lines across
+            // 计算标尺线需要横跨绘制的最右边界。
             SKRect ground, sky;
             lock (_layoutLock) { ground = _groundRect; sky = _skyRect; }
             float lineRight = Math.Max(ground.Right, sky.Right);
@@ -1024,14 +1150,15 @@ namespace AffToSpcConverter.Views
             }
         }
 
-        /// <summary>Paint ruler lines specifically on the sky panel in split mode.</summary>
+        // 分离模式下的天空标尺扩展入口；主标尺已统一绘制，因此此处留空。
         private void PaintSplitRuler(SKCanvas canvas, SKRect sky,
             float judgeY, double pxPerMs, double judgeTimeMs, RenderModel? model)
         {
-            // In split mode the main PaintRuler already draws across both panels,
-            // so this is intentionally empty. The lines span from ground.Left to sky.Right.
+            // 分离模式下主 PaintRuler 已覆盖天空与地面两个面板，
+            // 因此此处保留空实现。
         }
 
+        // 使用二分查找首个时间不小于指定值的音符索引。
         private static int FindFirstIndexByTime(List<RenderItem> items, int timeMs)
         {
             int lo = 0, hi = items.Count - 1, result = items.Count;
@@ -1044,6 +1171,7 @@ namespace AffToSpcConverter.Views
             return result;
         }
 
+        // 绘制当前可视范围内的地面 Tap/Hold 音符。
         private static void PaintGroundNotes(SKCanvas canvas, SKRect ground,
              float judgeY, double pxPerMs, double judgeTimeMs, int selectedIdx, RenderModel? model)
          {
@@ -1079,6 +1207,7 @@ namespace AffToSpcConverter.Views
              }
          }
 
+        // 绘制当前可视范围内的天空 Flick/SkyArea 音符。
         private void PaintSkyNotes(SKCanvas canvas, SKRect sky,
             float judgeY, double pxPerMs, double judgeTimeMs, int selectedIdx, RenderModel? model)
          {
@@ -1114,6 +1243,7 @@ namespace AffToSpcConverter.Views
              }
          }
 
+        // 绘制单个地面 Tap 音符及其选中高亮效果。
         private static void PaintGroundTap(SKCanvas canvas, SKRect ground, float y, int lane, int kind, bool selected)
         {
             lane = Math.Clamp(lane, 0, 5);
@@ -1126,7 +1256,7 @@ namespace AffToSpcConverter.Views
             float width = (x1 - x0) - 4;
             if (width <= 0) return;
 
-            // Tap �Ŀɵ����Χ��ʵ�ʻ��Ƶľ��θ��������Ҹ���չ 2 ���أ���������
+            // Tap 点击范围比实际矩形略宽，左右各扩展 2 像素便于点选。
             var rect = new SKRect(x0 + 2, y - TapHalfH, x0 + 2 + width, y + TapHalfH);
             var (fill, stroke, _, _) = GetGroundNotePaints(lane, kind);
             canvas.DrawRoundRect(rect, 3, 3, fill);
@@ -1138,6 +1268,7 @@ namespace AffToSpcConverter.Views
             }
         }
 
+        // 绘制单个地面 Hold 音符主体、中心线和选中高亮效果。
         private static void PaintGroundHold(SKCanvas canvas, SKRect ground, RenderItem item, float y0, float y1, bool selected)
         {
             int lane = Math.Clamp(item.Lane, 0, 5);
@@ -1167,6 +1298,7 @@ namespace AffToSpcConverter.Views
             }
         }
 
+        // 在 Hold 音符中线位置绘制加深竖线以增强辨识度。
         private static void PaintHoldCenterLine(SKCanvas canvas, SKRect body, SKPaint fill)
         {
             float centerX = (body.Left + body.Right) * 0.5f;
@@ -1174,6 +1306,7 @@ namespace AffToSpcConverter.Views
             canvas.DrawLine(centerX, body.Top, centerX, body.Bottom, linePaint);
         }
 
+        // 根据 Hold 底色生成中心线画笔。
         private static SKPaint MkHoldCenterLinePaint(SKColor baseColor)
         {
             byte Darken(byte v) => (byte)Math.Clamp((int)(v * 0.7f), 0, 255);
@@ -1186,6 +1319,7 @@ namespace AffToSpcConverter.Views
             };
         }
 
+        // 绘制地面两侧特殊轨道（0/5）的底色覆盖层。
         private static void PaintGroundLaneBackgrounds(SKCanvas canvas, SKRect ground, float judgeY)
         {
             float laneW = ground.Width / GroundLanes;
@@ -1198,6 +1332,7 @@ namespace AffToSpcConverter.Views
             canvas.DrawRect(lane5, GroundLane5OverlayPaint);
         }
 
+        // 根据轨道位置与音符宽度类型选择地面音符的填充/描边配色。
         private static (SKPaint tapFill, SKPaint tapStroke, SKPaint holdFill, SKPaint holdStroke) GetGroundNotePaints(int lane, int kind)
         {
             if (lane == 0)
@@ -1211,6 +1346,7 @@ namespace AffToSpcConverter.Views
             return (TapFillDeepBlue, TapStrokeDeepBlue, HoldFillDeepBlue, HoldStrokeDeepBlue);
         }
 
+        // 绘制单个天空 Flick 音符，并按天空面板尺寸缓存路径。
         private void PaintSkyFlick(SKCanvas canvas, SKRect sky, float y, RenderItem item, bool selected)
         {
             int key = RuntimeHelpers.GetHashCode(item);
@@ -1262,6 +1398,7 @@ namespace AffToSpcConverter.Views
             canvas.Restore();
         }
 
+        // 绘制单个天空 SkyArea 音符（填充、条纹、描边与选中态）。
         private static void PaintSkyArea(SKCanvas canvas, SKRect sky, RenderItem item, double pxPerMs, float yStart, bool selected)
         {
             var path = SpcSkiaGeometryBuilder.BuildSkyAreaPath(sky, item, pxPerMs);
@@ -1278,10 +1415,13 @@ namespace AffToSpcConverter.Views
             canvas.Restore();
         }
 
-        // ===== ֡����ʾ =====
+        // ===== 帧率显示 =====
+        // 上次生成的 FPS 文本，键值未变化时直接复用字符串。
         private string _lastStatsStr = "";
+        // FPS 文本缓存键（由 FPS 与帧时长拼接生成）。
         private int _lastStatsKey = -1;
 
+        // 在右上角绘制 FPS 与帧时长统计信息。
         private void PaintFps(SKCanvas canvas, float w)
         {
             int fps = _fps;
@@ -1295,14 +1435,17 @@ namespace AffToSpcConverter.Views
             DrawText(canvas, _lastStatsStr, w - 160, 10, FpsPaint);
         }
 
+        // 按左上对齐方式在画布指定位置绘制文本。
         private static void DrawText(SKCanvas canvas, string text, float x, float y, SKPaint paint)
         {
             float baseline = y - paint.FontMetrics.Ascent;
             canvas.DrawText(text, x, baseline, paint);
         }
 
+        // 清空标尺标签文本缓存。
         private void ClearRulerTextCache() => _rulerTextCache.Clear();
 
+        // 释放并清空 Flick 路径缓存。
         private void ClearFlickPathCache()
         {
             foreach (var kv in _flickPathCache)
@@ -1310,9 +1453,11 @@ namespace AffToSpcConverter.Views
             _flickPathCache.Clear();
         }
 
+        // 创建纯色填充画笔。
         private static SKPaint MkFill(byte r, byte g, byte b, byte a = 255)
             => new() { Color = new SKColor(r, g, b, a), IsAntialias = true, Style = SKPaintStyle.Fill };
 
+        // 创建描边画笔（支持透明度与虚线）。
         private static SKPaint MkStroke(byte r, byte g, byte b, float w, float[]? dash = null, byte alpha = 255)
         {
             var p = new SKPaint { Color = new SKColor(r, g, b, alpha), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = w };
@@ -1320,6 +1465,7 @@ namespace AffToSpcConverter.Views
             return p;
         }
 
+        // 创建文本绘制画笔。
         private static SKPaint MkText(byte r, byte g, byte b, float size)
             => new()
             {
@@ -1329,6 +1475,7 @@ namespace AffToSpcConverter.Views
                 TextSize = size
             };
 
+        // 创建天空区域使用的斜条纹着色画笔。
         private static SKPaint MkStripePaint(byte r, byte g, byte b, byte a, float size)
         {
             const float stripePx = 3f;
@@ -1368,6 +1515,7 @@ namespace AffToSpcConverter.Views
             };
         }
 
+        // 停止渲染循环并释放预览控件持有的缓存资源。
         public void Dispose()
         {
             StopRenderLoop();

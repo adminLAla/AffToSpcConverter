@@ -9,6 +9,7 @@ namespace AffToSpcConverter.Convert;
 
 public static class AffToSpcConverter
 {
+    // 根据配置选择转换规则并执行 AFF 到 SPC 转换。
     public static ConversionResult Convert(AffChart chart, ConverterOptions options)
     {
         if (options.MappingRule == "暴力映射(不推荐)")
@@ -17,9 +18,7 @@ public static class AffToSpcConverter
         return ConvertCustom(chart, options);
     }
 
-    /// <summary>
-    /// 暴力映射：不做 clamp、不做合法性校验、不做后处理。
-    /// </summary>
+    // 使用暴力映射规则执行转换。
     private static ConversionResult ConvertBruteForce(AffChart chart, ConverterOptions options)
     {
         // 0) 全局基础映射：忽略 Offset，只取第一个 timing
@@ -96,9 +95,7 @@ public static class AffToSpcConverter
         return new ConversionResult(ordered, new List<string>());
     }
 
-    /// <summary>
-    /// 自建规则：原有完整转换逻辑（含 clamp、后处理等）。
-    /// </summary>
+    // 使用自定义规则与后处理执行转换。
     private static ConversionResult ConvertCustom(AffChart chart, ConverterOptions options)
     {
         // ---- 基础节拍 ----
@@ -318,6 +315,7 @@ public static class AffToSpcConverter
         return new ConversionResult(ordered.ToList(), new List<string>());
     }
 
+    // 按配置映射地面轨道编号。
     private static int MapLaneCustom(int affLane, string laneMapping, ConverterOptions options)
     {
         if (laneMapping == "4kTo6k")
@@ -327,11 +325,12 @@ public static class AffToSpcConverter
             return affLane;
         }
 
-        // "direct" — also respect legacy RecommendedKeymap
+        // direct 模式下也兼容旧版 RecommendedKeymap 选项
         if (options.RecommendedKeymap && affLane == 4) return 5;
         return affLane;
     }
 
+    // 按配置映射天空坐标 X。
     private static double MapXCustom(double x, string mapping)
     {
         return mapping switch
@@ -342,6 +341,7 @@ public static class AffToSpcConverter
         };
     }
 
+    // 根据配置或弧线走势确定滑键方向。
     private static int ResolveFlickDirection(AffArc a, int tMs, ConverterOptions options)
     {
         return options.FlickDirectionMode switch
@@ -352,6 +352,7 @@ public static class AffToSpcConverter
         };
     }
 
+    // 按兼容规则映射轨道编号。
     private static int MapLane(int affLane, ConverterOptions options)
     {
         // Aff 轨道：1..4
@@ -361,6 +362,7 @@ public static class AffToSpcConverter
         return affLane;
     }
 
+    // 按映射模式规范化 X 坐标。
     private static double MapX(double x, string mapping)
     {
         // Arcaea x 通常为 [0,1]，这里做保护
@@ -373,6 +375,7 @@ public static class AffToSpcConverter
         };
     }
 
+    // 在宽度约束下量化天空坐标到分母刻度。
     private static int QuantizeXClampedByWidth(double x01, int widthNum, int den)
     {
         // 关键修正：中心必须落在 [w/2, 1-w/2]

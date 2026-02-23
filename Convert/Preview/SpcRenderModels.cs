@@ -23,10 +23,10 @@ namespace AffToSpcConverter.Convert.Preview
         public int RightEase { get; init; }
         public int GroupId { get; init; }
 
-        /// <summary>指向原始 ISpcEvent，便于编辑。</summary>
+        // 指向原始 ISpcEvent，便于编辑。
         public ISpcEvent? SourceEvent { get; init; }
 
-        /// <summary>原始事件列表中的索引（写回用）。</summary>
+        // 原始事件列表中的索引（写回用）。
         public int SourceIndex { get; init; } = -1;
     }
 

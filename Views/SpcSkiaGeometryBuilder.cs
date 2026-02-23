@@ -11,6 +11,7 @@ namespace AffToSpcConverter.Views
         private static readonly Dictionary<int, (double pxPerMs, SKPath path, LinkedListNode<int> node)> _skyAreaGeoCache = new();
         private static readonly LinkedList<int> _skyAreaCacheOrder = new();
 
+        // 清空天空区域路径缓存并释放已缓存的 SKPath。
         public static void ClearCache()
         {
             foreach (var entry in _skyAreaGeoCache.Values)
@@ -21,6 +22,7 @@ namespace AffToSpcConverter.Views
             _skyAreaCacheOrder.Clear();
         }
 
+        // 构建天空 Flick 的轮廓路径。
         public static SKPath BuildFlickPath(float cx, float y, float half, float triH, bool leftDir)
         {
             var path = new SKPath();
@@ -52,6 +54,7 @@ namespace AffToSpcConverter.Views
             return path;
         }
 
+        // 构建天空 SkyArea 的轮廓路径，并在缓存命中时复用。
         public static SKPath BuildSkyAreaPath(SKRect sky, RenderItem item, double pxPerMs)
         {
             int itemIdx = item.GetHashCode();
@@ -128,7 +131,9 @@ namespace AffToSpcConverter.Views
             return path;
         }
 
+        // 计算线性插值结果。
         private static double Lerp(double a, double b, double t) => a + (b - a) * t;
+        // 按缓动类型计算插值结果。
         private static double LerpEase(double a, double b, double t, int ease)
         {
             t = ease switch
@@ -140,6 +145,7 @@ namespace AffToSpcConverter.Views
             return a + (b - a) * t;
         }
 
+        // 对插值结果应用平滑修正。
         private static double SmoothEase(double x, double t)
         {
             return x;

@@ -7,6 +7,7 @@ namespace AffToSpcConverter.Parsing;
 
 public static class SpcParser
 {
+    // 解析输入文本并生成Spc数据模型。
     public static List<ISpcEvent> Parse(string spcText)
     {
         var events = new List<ISpcEvent>();
@@ -59,7 +60,7 @@ public static class SpcParser
                         break;
                 }
             }
-            catch { /* ���Ը�ʽ����ȷ���� */ }
+            catch { /* 忽略格式不正确的行 */ }
         }
         return events;
     }

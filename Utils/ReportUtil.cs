@@ -8,6 +8,7 @@ namespace AffToSpcConverter.Utils;
 
 public static class ReportUtil
 {
+    // 生成转换结果的简要统计报告。
     public static string BuildSimpleReport(string spcText, MainViewModel vm)
     {
         var lines = spcText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);

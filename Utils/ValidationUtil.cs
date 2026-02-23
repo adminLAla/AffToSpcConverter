@@ -7,6 +7,7 @@ namespace AffToSpcConverter.Utils;
 
 public static class ValidationUtil
 {
+    // 校验转换后的 SPC 事件是否合法。
     public static void Validate(List<ISpcEvent> events, ConverterOptions opt, List<string> warnings)
     {
         // chart 必须恰好 1 个

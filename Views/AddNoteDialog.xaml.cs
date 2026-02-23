@@ -16,6 +16,7 @@ public partial class AddNoteDialog : Window
     public int RightEase { get; private set; }
     public int GroupId { get; private set; } = 1;
 
+    // 添加相关内容或字段。
     public AddNoteDialog(string[] typeNames, int defaultDen)
     {
         InitializeComponent();
@@ -25,6 +26,7 @@ public partial class AddNoteDialog : Window
         TbDen.Text = Math.Max(1, defaultDen).ToString();
     }
 
+    // 根据音符类型切换新增音符表单字段。
     private void CbType_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CbType.SelectedItem == null) return;
@@ -41,6 +43,7 @@ public partial class AddNoteDialog : Window
         PanelSkyArea.Visibility = isSkyArea ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // 校验输入并确认新增音符参数。
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         SelectedType = CbType.SelectedItem?.ToString() ?? "Tap";
@@ -48,18 +51,18 @@ public partial class AddNoteDialog : Window
         switch (SelectedType)
         {
             case "Tap":
-                if (!int.TryParse(TbKind.Text, out int tk)) { MessageBox.Show("Kind ֵ��Ч��"); return; }
+                if (!int.TryParse(TbKind.Text, out int tk)) { MessageBox.Show("Kind ֵ��Ч��"); return; }
                 Kind = Math.Clamp(tk, 1, 4);
                 break;
 
             case "Hold":
-                if (!int.TryParse(TbKind.Text, out int hk)) { MessageBox.Show("Width ֵ��Ч��"); return; }
+                if (!int.TryParse(TbKind.Text, out int hk)) { MessageBox.Show("Width ֵ��Ч��"); return; }
                 Kind = Math.Clamp(hk, 1, 6);
                 break;
 
             case "Flick":
-                if (!int.TryParse(TbDen.Text, out int fd)) { MessageBox.Show("Den ֵ��Ч��"); return; }
-                if (!int.TryParse(TbWidthNum.Text, out int fw)) { MessageBox.Show("WidthNum ֵ��Ч��"); return; }
+                if (!int.TryParse(TbDen.Text, out int fd)) { MessageBox.Show("Den ֵ��Ч��"); return; }
+                if (!int.TryParse(TbWidthNum.Text, out int fw)) { MessageBox.Show("WidthNum ֵ��Ч��"); return; }
                 Den = Math.Max(1, fd);
                 WidthNum = Math.Max(1, fw);
                 WidthNum2 = WidthNum;
@@ -68,8 +71,8 @@ public partial class AddNoteDialog : Window
                 break;
 
             case "SkyArea":
-                if (!int.TryParse(TbDen.Text, out int sd)) { MessageBox.Show("Den ֵ��Ч��"); return; }
-                if (!int.TryParse(TbWidthNum.Text, out int sw)) { MessageBox.Show("WidthNum ֵ��Ч��"); return; }
+                if (!int.TryParse(TbDen.Text, out int sd)) { MessageBox.Show("Den ֵ��Ч��"); return; }
+                if (!int.TryParse(TbWidthNum.Text, out int sw)) { MessageBox.Show("WidthNum ֵ��Ч��"); return; }
                 Den = Math.Max(1, sd);
                 WidthNum = Math.Max(0, sw);
                 WidthNum2 = WidthNum;

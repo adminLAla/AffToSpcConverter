@@ -8,6 +8,7 @@ namespace AffToSpcConverter.Views
 {
     public static class SpcGeometryBuilder
     {
+        // æ„å»º Flick çš„ WPF å‡ ä½•è½®å»“ã€‚
         public static StreamGeometry BuildFlickGeo(double cx, double y, double half, double triH, bool leftDir)
         {
             var geo = new StreamGeometry();
@@ -15,11 +16,11 @@ namespace AffToSpcConverter.Views
             {
                 if (leftDir)
                 {
-                    // ×ó²à´¹Ö±±ß
+                    // å·¦å‘ Flick è½®å»“
                     var ptLeftBottom = new Point(cx - half, y);
                     var ptRight = new Point(cx + half, y);
                     var ptLeftTop = new Point(cx - half, y - triH);
-                    var cp = new Point(cx - half * 0.6, y); // Ïò×óÏÂÀ­¿ØÖÆµã
+                    var cp = new Point(cx - half * 0.6, y); // å·¦ä¾§å¼§è¾¹æ§åˆ¶ç‚¹
                     
                     g.BeginFigure(ptRight, true, true);
                     g.LineTo(ptLeftBottom, true, false);
@@ -28,11 +29,11 @@ namespace AffToSpcConverter.Views
                 }
                 else
                 {
-                    // ÓÒ²à´¹Ö±±ß
+                    // å³å‘ Flick è½®å»“
                     var ptLeft = new Point(cx - half, y);
                     var ptRightBottom = new Point(cx + half, y);
                     var ptRightTop = new Point(cx + half, y - triH);
-                    var cp = new Point(cx + half * 0.6, y); // ÏòÓÒÏÂÀ­¿ØÖÆµã
+                    var cp = new Point(cx + half * 0.6, y); // å³ä¾§å¼§è¾¹æ§åˆ¶ç‚¹
                     
                     g.BeginFigure(ptLeft, true, true);
                     g.LineTo(ptRightBottom, true, false);
@@ -44,18 +45,20 @@ namespace AffToSpcConverter.Views
             return geo;
         }
 
-        // Ìì¿ÕÇøÓò¼¸ºÎ»º´æ£¨»ùÓÚÒô·ûÓëËÙ¶È£©
+        // å¤©ç©ºåŒºåŸŸå‡ ä½•ç¼“å­˜ï¼ˆæŒ‰éŸ³ç¬¦å’Œç¼©æ”¾å¤ç”¨ï¼‰ã€‚
         private static readonly Dictionary<int, (double pxPerMs, StreamGeometry geo)> _skyAreaGeoCache = new();
 
+        // æ¸…ç©ºå¤©ç©ºåŒºåŸŸå‡ ä½•ç¼“å­˜ã€‚
         public static void ClearCache()
         {
             _skyAreaGeoCache.Clear();
         }
 
+        // æ„å»ºå¤©ç©ºåŒºåŸŸå‡ ä½•ï¼Œå¹¶åœ¨å‘½ä¸­ç¼“å­˜æ—¶ç›´æ¥å¤ç”¨ã€‚
         public static StreamGeometry BuildSkyAreaGeo(Rect sky, RenderItem item, double pxPerMs)
         {
-            int itemIdx = item.GetHashCode(); // Ê¹ÓÃ¹şÏ£×÷Îª¼òÒ× ID
-            // ÒòÎª PxPerMs ¸Ä±ä»áÕûÌåÖØ½¨£¬ÕâÀïÊ¹ÓÃ¶ÔÏó¹şÏ£¼´¿É
+            int itemIdx = item.GetHashCode(); // ä½¿ç”¨å“ˆå¸Œå€¼ä½œä¸ºç¼“å­˜é”®
+            // è‹¥åŒä¸€éŸ³ç¬¦ä¸”ç¼©æ”¾ä¸€è‡´ï¼Œç›´æ¥è¿”å›ç¼“å­˜å‡ ä½•ã€‚
             
             if (_skyAreaGeoCache.TryGetValue(itemIdx, out var cached) && Math.Abs(cached.pxPerMs - pxPerMs) < 1e-6)
             {
@@ -75,7 +78,7 @@ namespace AffToSpcConverter.Views
             var geo = new StreamGeometry();
             using (var g = geo.Open())
             {
-                // ×ó±ß½ç
+                // å·¦è¾¹ç•Œ
                 for (int i = 0; i <= steps; i++)
                 {
                     double t = i / (double)steps;
@@ -87,7 +90,7 @@ namespace AffToSpcConverter.Views
                     else g.LineTo(new Point(px, yy), true, false);
                 }
 
-                // ÓÒ±ß½ç
+                // å³è¾¹ç•Œ
                 for (int i = steps; i >= 0; i--)
                 {
                     double t = i / (double)steps;
@@ -103,7 +106,9 @@ namespace AffToSpcConverter.Views
             return geo;
         }
 
+        // è®¡ç®—çº¿æ€§æ’å€¼ç»“æœã€‚
         private static double Lerp(double a, double b, double t) => a + (b - a) * t;
+        // æŒ‰ç¼“åŠ¨ç±»å‹è®¡ç®—æ’å€¼ç»“æœã€‚
         private static double LerpEase(double a, double b, double t, int ease)
         {
             t = ease switch
@@ -114,6 +119,7 @@ namespace AffToSpcConverter.Views
             };
             return a + (b - a) * t;
         }
+        // å¯¹æ’å€¼ç»“æœåº”ç”¨å¹³æ»‘ä¿®æ­£ã€‚
         private static double SmoothEase(double x, double t)
         {
             return x;

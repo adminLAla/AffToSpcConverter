@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     // 下拉框字段：(字段名, ComboBox) — 用于枚举/有限选项
     private readonly List<(string fieldName, ComboBox comboBox)> _propComboFields = new();
 
+    // 初始化主窗口并绑定预览事件。
     public MainWindow()
     {
         InitializeComponent();
@@ -50,6 +51,7 @@ public partial class MainWindow : Window
 
     // ===== 文件操作 =====
 
+    // 打开并读取 AFF 文件内容到预览区。
     private void BtnOpenAff_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
         _vm.Status = $"已加载：{Path.GetFileName(dlg.FileName)}";
     }
 
+    // 打开并解析 SPC 文件，同时刷新预览事件列表。
     private void BtnOpenSpc_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
@@ -82,7 +85,7 @@ public partial class MainWindow : Window
             _vm.SpcPreview = spcText;
             _vm.PreviewEvents = events;
 
-            // 计算预览时间范围
+            // 计算事件的结束时间（用于预览时间范围）。
             static int EndTime(ISpcEvent ev) => ev switch
             {
                 SpcHold h => h.TimeMs + h.DurationMs,
@@ -105,6 +108,7 @@ public partial class MainWindow : Window
         }
     }
 
+    // 读取 AFF、执行转换并刷新预览与输出文本。
     private void BtnConvert_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_vm.LoadedAffPath) || !File.Exists(_vm.LoadedAffPath))
@@ -158,7 +162,7 @@ public partial class MainWindow : Window
             var result = AffToSpcConverter.Convert.AffToSpcConverter.Convert(aff, opt);
             _vm.PreviewEvents = result.Events;
 
-            // 计算预览时间范围
+            // 计算事件的结束时间（用于预览时间范围）。
             static int EndTime(ISpcEvent e) => e switch
             {
                 SpcHold h => h.TimeMs + h.DurationMs,
@@ -194,6 +198,7 @@ public partial class MainWindow : Window
         }
     }
 
+    // 将当前生成的 SPC 文本保存到文件。
     private void BtnSaveSpc_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_vm.GeneratedSpcText))
@@ -214,12 +219,14 @@ public partial class MainWindow : Window
         _vm.Status = $"已保存：{Path.GetFileName(dlg.FileName)}";
     }
 
+    // 打开设置窗口。
     private void MenuSettings_Click(object sender, RoutedEventArgs e)
     {
         var win = new SettingsWindow { Owner = this, DataContext = _vm };
         win.ShowDialog();
     }
 
+    // 生成并显示当前 SPC 的简要报告。
     private void MenuReport_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_vm.GeneratedSpcText))
@@ -230,21 +237,22 @@ public partial class MainWindow : Window
         MessageBox.Show(ReportUtil.BuildSimpleReport(_vm.GeneratedSpcText, _vm), "报告");
     }
 
+    // 打开资源打包窗口。
     private void MenuPackage_Click(object sender, RoutedEventArgs e)
     {
         new PackageWindow { Owner = this }.ShowDialog();
     }
 
+    // 显示关于对话框。
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show("Arcaea → In Falsus 转换器\nv0.1\nWPF/.NET", "关于");
     }
 
+    // 关闭主窗口。
     private void MenuExit_Click(object sender, RoutedEventArgs e) => Close();
 
-    /// <summary>
-    /// 菜单栏"可视化预览"选中/取消时切换工具栏与内容区可见性。
-    /// </summary>
+    // 切换文本视图与可视化预览模式，并同步工具栏显示。
     private void OnPreviewToggled(object sender, RoutedEventArgs e)
     {
         bool show = MenuVisualPreview.IsChecked == true;
@@ -260,6 +268,7 @@ public partial class MainWindow : Window
 
     // ===== 音符增删 =====
 
+    // 打开新增音符对话框，并进入预览放置模式。
     private void BtnAddNote_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.PreviewEvents == null)
@@ -312,6 +321,7 @@ public partial class MainWindow : Window
         _vm.Status = "请在预览中点击/拖动以放置音符（已自动吸附到辅助线）";
     }
 
+    // 接收预览放置结果并插入新音符到事件列表。
     private void OnNotePlacementCommitted(Views.AddNotePlacement placement)
     {
         if (_vm.PreviewEvents == null || _pendingAddRequest == null) return;
@@ -355,6 +365,7 @@ public partial class MainWindow : Window
         _vm.Status = $"已添加 {newEvent.Type}（{newEvent.TimeMs}ms）";
     }
 
+    // 更新事件列表并刷新文本与预览。
     private void ApplyEventsAndRefresh(List<ISpcEvent> events)
     {
         _vm.PreviewEvents = events;
@@ -364,6 +375,7 @@ public partial class MainWindow : Window
         PreviewControl.RefreshModel();
     }
 
+    // 删除当前选中的音符并刷新预览与文本。
     private void BtnDeleteNote_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.PreviewEvents == null || _selectedRenderItem?.SourceEvent == null)
@@ -397,6 +409,7 @@ public partial class MainWindow : Window
 
     // ===== 视图模式切换（合并/分离）=====
 
+    // 切换到合并预览模式并更新按钮样式。
     private void OnMergedViewClick(object sender, RoutedEventArgs e)
     {
         PreviewControl.ViewMode = PreviewViewMode.Merged;
@@ -406,6 +419,7 @@ public partial class MainWindow : Window
         BtnSplitView.ClearValue(Button.ForegroundProperty);
     }
 
+    // 切换到分离预览模式并更新按钮样式。
     private void OnSplitViewClick(object sender, RoutedEventArgs e)
     {
         PreviewControl.ViewMode = PreviewViewMode.Split;
@@ -417,7 +431,7 @@ public partial class MainWindow : Window
 
     // ===== 音符选中与属性面板 =====
 
-    /// <summary>收到预览控件的音符选中事件，打开或关闭属性面板。</summary>
+    // 收到预览控件的音符选中事件，打开或关闭属性面板。
     private void OnNoteSelected(RenderItem? item)
     {
         _selectedRenderItem = item;
@@ -431,7 +445,7 @@ public partial class MainWindow : Window
         ShowPropPanel(item);
     }
 
-    /// <summary>展开属性面板并填充当前选中音符的字段。</summary>
+    // 展开属性面板并填充当前选中音符的字段。
     private void ShowPropPanel(RenderItem item)
     {
         PropPanel.Visibility = Visibility.Visible;
@@ -467,14 +481,14 @@ public partial class MainWindow : Window
 
     // ── 各音符类型的字段构建方法 ──────────────────────────────────────
 
-    /// <summary>点按音符字段：宽度（1-4）、轨道（0-5）。</summary>
+    // 点按音符字段：宽度（1-4）、轨道（0-5）。
     private void BuildTapFields(SpcTap tap)
     {
         AddIntField("Kind",  tap.Kind.ToString(),      minVal: 1, maxVal: 4);
         AddIntField("Lane",  tap.LaneIndex.ToString(),  minVal: 0, maxVal: 5);
     }
 
-    /// <summary>长按音符字段：轨道（0-5）、宽度（1-6）、时长（ms）（≥1）。</summary>
+    // 长按音符字段：轨道（0-5）、宽度（1-6）、时长（ms）（≥1）。
     private void BuildHoldFields(SpcHold hold)
     {
         AddIntField("Lane",          hold.LaneIndex.ToString(),  minVal: 0, maxVal: 5);
@@ -482,7 +496,7 @@ public partial class MainWindow : Window
         AddIntField("Duration (ms)", hold.DurationMs.ToString(), minVal: 1);
     }
 
-    /// <summary>滑键音符字段：位置、分母（≥1）、宽度（≥1）、方向（4=右/16=左）。</summary>
+    // 滑键音符字段：位置、分母（≥1）、宽度（≥1）、方向（4=右/16=左）。
     private void BuildFlickFields(SpcFlick flick)
     {
         AddIntField("PosNum",   flick.PosNum.ToString());
@@ -495,7 +509,7 @@ public partial class MainWindow : Window
             flick.Dir == 16 ? 1 : 0);
     }
 
-    /// <summary>天空区域字段：起点/终点位置与宽度、分母（锁定）、缓动、时长（ms）、组 ID。</summary>
+    // 天空区域字段：起点/终点位置与宽度、分母（锁定）、缓动、时长（ms）、组 ID。
     private void BuildSkyAreaFields(SpcSkyArea sky)
     {
         AddGroupHeader("Start");
@@ -523,15 +537,14 @@ public partial class MainWindow : Window
 
     // ── 属性面板通用控件工厂 ─────────────────────────────────────────
 
-    /// <summary>
-    /// 添加带 −/+ 按钮的整数输入字段。
-    /// <paramref name="minVal"/> 和 <paramref name="maxVal"/> 为可选的合法值范围。
-    /// </summary>
+    // 添加带 −/+ 按钮的整数输入字段。
+    // minVal 和 maxVal 为可选的合法值范围。
     private void AddIntField(string label, string value, int? minVal = null, int? maxVal = null)
     {
         AddIntFieldWithKey(label, label, value, minVal, maxVal);
     }
 
+    // 添加相关内容或字段。
     private void AddIntFieldWithKey(string fieldKey, string label, string value, int? minVal = null, int? maxVal = null)
     {
         // 标签
@@ -580,6 +593,7 @@ public partial class MainWindow : Window
         _propFields.Add((fieldKey, tb));
     }
 
+    // 添加相关内容或字段。
     private void AddLockedIntFieldWithKey(string fieldKey, string label, string value, int? minVal = null, int? maxVal = null)
     {
         var header = new Grid { Margin = new Thickness(0, 6, 0, 2) };
@@ -652,6 +666,7 @@ public partial class MainWindow : Window
         _propFields.Add((fieldKey, tb));
     }
 
+    // 添加相关内容或字段。
     private void AddGroupHeader(string text)
     {
         PropFieldsPanel.Children.Add(new TextBlock
@@ -664,9 +679,7 @@ public partial class MainWindow : Window
         });
     }
 
-    /// <summary>
-    /// 添加下拉框字段，用于只有有限合法值的字段（如缓动、方向）。
-    /// </summary>
+    // 添加相关内容或字段。
     private void AddComboField(string label, string[] displayItems, int[] values, int selectedIndex)
     {
         PropFieldsPanel.Children.Add(MakeLabelBlock(label));
@@ -687,7 +700,7 @@ public partial class MainWindow : Window
         _propComboFields.Add((label, cb));
     }
 
-    /// <summary>构建属性面板标签样式的 TextBlock。</summary>
+    // 构建属性面板标签样式的 TextBlock。
     private static TextBlock MakeLabelBlock(string text) => new()
     {
         Text = text,
@@ -699,6 +712,7 @@ public partial class MainWindow : Window
 
     // ── 隐藏属性面板 ─────────────────────────────────────────────────
 
+    // 隐藏属性面板并清除当前选中项。
     private void HidePropPanel()
     {
         PropPanel.Visibility = Visibility.Collapsed;
@@ -709,21 +723,22 @@ public partial class MainWindow : Window
 
     // ── 时间字段微调 ─────────────────────────────────────────────────
 
+    // 将属性面板中的时间字段减小一个步长。
     private void PropDecTime(object sender, RoutedEventArgs e)
     {
         if (int.TryParse(PropTime.Text, out int v)) PropTime.Text = Math.Max(0, v - 1).ToString();
     }
 
+    // 将属性面板中的时间字段增大一个步长。
     private void PropIncTime(object sender, RoutedEventArgs e)
     {
         if (int.TryParse(PropTime.Text, out int v)) PropTime.Text = (v + 1).ToString();
     }
 
+    // 放弃本次属性编辑并关闭属性面板。
     private void PropCancel_Click(object sender, RoutedEventArgs e) => HidePropPanel();
 
-    /// <summary>
-    /// 将属性面板中的修改应用到事件列表，并刷新预览与 SPC 文本。
-    /// </summary>
+    // 应用属性面板修改并回写到事件列表。
     private void PropApply_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedRenderItem?.SourceEvent == null || _vm.PreviewEvents == null)
@@ -790,17 +805,20 @@ public partial class MainWindow : Window
 
     // ── 应用时各类型事件构建辅助方法 ──────────────────────────────
 
+    // 根据属性字段构建点按音符事件。
     private static SpcTap BuildTapEvent(int timeMs, Dictionary<string, string> f)
         => new(timeMs,
                Math.Clamp(ParseInt(f, "Kind"), 1, 4),
                Math.Clamp(ParseInt(f, "Lane"), 0, 5));
 
+    // 根据属性字段构建长按音符事件。
     private static SpcHold BuildHoldEvent(int timeMs, Dictionary<string, string> f)
         => new(timeMs,
                Math.Clamp(ParseInt(f, "Lane"),          0, 5),
                Math.Clamp(ParseInt(f, "Width"),         1, 6),
                Math.Max(1, ParseInt(f, "Duration (ms)")));
 
+    // 根据属性字段构建滑键音符事件。
     private static SpcFlick BuildFlickEvent(int timeMs, Dictionary<string, string> f,
                                              Dictionary<string, int> combo)
     {
@@ -812,6 +830,7 @@ public partial class MainWindow : Window
                    dir);
     }
 
+    // 根据属性字段构建天空区域事件。
     private static SpcSkyArea BuildSkyAreaEvent(int timeMs, Dictionary<string, string> f,
                                                  Dictionary<string, int> combo)
     {
@@ -827,6 +846,7 @@ public partial class MainWindow : Window
                    Math.Max(0, ParseInt(f, "GroupId")));
     }
 
+    // 解析相关数据并返回结果。
     private static int ParseInt(Dictionary<string, string> fields, string key)
     {
         if (!fields.TryGetValue(key, out var val))
@@ -838,6 +858,7 @@ public partial class MainWindow : Window
 
     // ===== 背景音乐控制 =====
 
+    // 选择并加载背景音乐文件。
     private void BtnOpenBgm_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
@@ -878,12 +899,14 @@ public partial class MainWindow : Window
         }
     }
 
+    // 切换背景音乐播放/暂停状态。
     private void BtnPlayPause_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.IsPlaying) PausePlayback();
         else StartPlayback();
     }
 
+    // 重置播放位置并按需重新开始播放。
     private void BtnRestart_Click(object sender, RoutedEventArgs e)
     {
         bool wasPlaying = _vm.IsPlaying;
@@ -896,6 +919,7 @@ public partial class MainWindow : Window
             StartPlayback();
     }
 
+    // 开始背景音乐播放并同步预览。
     private void StartPlayback()
     {
         if (_waveOut == null || _audioStream == null) return;
@@ -909,6 +933,7 @@ public partial class MainWindow : Window
         HookRenderCallback(true);
     }
 
+    // 暂停背景音乐播放。
     private void PausePlayback()
     {
         _waveOut?.Pause();
@@ -916,6 +941,7 @@ public partial class MainWindow : Window
         HookRenderCallback(false);
     }
 
+    // 停止背景音乐播放并重置状态。
     private void StopPlayback()
     {
         _waveOut?.Stop();
@@ -925,7 +951,7 @@ public partial class MainWindow : Window
 
     private int _syncFrameCounter = 0;
 
-    /// <summary>每帧渲染回调：将音频播放位置同步到预览时间轴。</summary>
+    // 每帧渲染回调：将音频播放位置同步到预览时间轴。
     private void OnRenderingFrame(object? sender, EventArgs e)
     {
         if (!_vm.IsPlaying || _audioStream == null) return;
@@ -943,6 +969,7 @@ public partial class MainWindow : Window
         }
     }
 
+    // 绑定或解绑预览渲染帧回调。
     private void HookRenderCallback(bool hook)
     {
         if (hook && !_renderHooked)
@@ -957,6 +984,7 @@ public partial class MainWindow : Window
         }
     }
 
+    // 释放背景音乐播放资源。
     private void DisposeAudio()
     {
         _waveOut?.Dispose();
@@ -965,6 +993,7 @@ public partial class MainWindow : Window
         _audioStream = null;
     }
 
+    // 窗口关闭时停止播放并释放音频资源。
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
@@ -972,6 +1001,7 @@ public partial class MainWindow : Window
         DisposeAudio();
     }
 
+    // 退出可视化预览模式并切回文本视图。
     private void BtnExitPreview_Click(object sender, RoutedEventArgs e)
     {
         MenuVisualPreview.IsChecked = false;

@@ -7,6 +7,7 @@ namespace AffToSpcConverter.IO;
 
 public static class SpcWriter
 {
+    // 将 SPC 事件列表写出为文本内容。
     public static string Write(IEnumerable<ISpcEvent> events)
     {
         var sb = new StringBuilder();

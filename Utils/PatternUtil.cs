@@ -7,6 +7,7 @@ namespace AffToSpcConverter.Utils;
 
 public static class PatternUtils
 {
+    // 根据 BPM 计算默认密集段阈值。
     public static int DefaultDenseThresholdMs(double bpm)
     {
         // 16 分音符时长（ms）：拍长/4
@@ -14,9 +15,7 @@ public static class PatternUtils
         return (int)Math.Round(beatMs / 4.0);
     }
 
-    // ---------------------------------------
-    // (1) 合并同窗口的 skyarea
-    // ---------------------------------------
+    // 合并同时间窗口内的天空区域。
     public static List<SpcSkyArea> MergeSkyAreasBySameWindow(List<SpcSkyArea> skyAreas)
     {
         // 按 (startTime, duration) 分组
@@ -68,9 +67,7 @@ public static class PatternUtils
         return result;
     }
 
-    // ---------------------------------------------------
-    // (1b) 同时刻多滑键：保留一个，其余落地
-    // ---------------------------------------------------
+    // 处理同时刻滑键并将多余项落地。
     public static void ResolveSimultaneousFlicksToGround(
         List<SpcFlick> flicks,
         List<SpcTap> groundTaps,
@@ -118,9 +115,7 @@ public static class PatternUtils
         }
     }
 
-    // ---------------------------------------
-    // (2) 滑键可读性：密集段加宽 + 方向交替
-    // ---------------------------------------
+    // 优化滑键宽度与方向以提升可读性。
     public static void ApplyFlickReadabilityStyle(
         List<SpcFlick> flicks,
         double baseBpm,
@@ -175,9 +170,7 @@ public static class PatternUtils
         }
     }
 
-    // ---------------------------------------
-    // (3) Tap 宽度模式（避开 hold，且只在密集段启用）
-    // ---------------------------------------
+    // 在安全条件下应用点按宽度模式。
     public static void ApplyTapWidthPatternSafely(
         List<SpcTap> taps,
         List<SpcHold> holds,
@@ -256,9 +249,7 @@ public static class PatternUtils
         }
     }
 
-    // ---------------------------------------
-    // (旧功能) 随机化 hold 宽度
-    // ---------------------------------------
+    // 按随机规则原地调整长按宽度。
     public static void RandomizeHoldWidthInPlace(List<SpcHold> holds, Random rng, int maxWidth)
     {
         maxWidth = Math.Max(1, maxWidth);
@@ -276,6 +267,7 @@ public static class PatternUtils
         }
     }
 
+    // 解析相关数据并返回结果。
     private static List<int> ParsePattern(string csv)
     {
         var res = new List<int>();

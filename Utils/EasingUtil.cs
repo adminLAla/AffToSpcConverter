@@ -5,7 +5,7 @@ namespace AffToSpcConverter.Utils;
 
 public static class EasingUtil
 {
-    // spc：0 为直线，11/22 为曲线代码
+    // 将 AFF 弧线缓动标记转换为 SPC 左右边缘缓动代码。
     public static (int left, int right) SlideTokenToSpcEdgeCodes(string token)
     {
         token = (token ?? "s").Trim().ToLowerInvariant();
@@ -27,6 +27,7 @@ public static class EasingUtil
         };
     }
 
+    // 计算指定时间点弧线的 X 坐标。
     public static double EvalArcX(AffArc a, int tMs)
     {
         if (a.T2Ms <= a.T1Ms) return a.X2;
@@ -38,6 +39,7 @@ public static class EasingUtil
         return a.X1 + (a.X2 - a.X1) * eased;
     }
 
+    // 根据弧线走势推断 Flick 方向。
     public static int DirectionFromArc(AffArc a, int tMs)
     {
         // 通过比较未来的 x 来判断方向
@@ -51,6 +53,7 @@ public static class EasingUtil
         return (xNext > xNow) ? 4 : 16;
     }
 
+    // 按弧线缓动标记计算插值曲线。
     private static double ApplyEasing(string token, double u)
     {
         token = (token ?? "s").Trim().ToLowerInvariant();
@@ -72,6 +75,7 @@ public static class EasingUtil
         };
     }
 
+    // 计算 SmoothStep 平滑曲线值。
     private static double SmoothStep(double u)
         => u * u * (3.0 - 2.0 * u);
 }
