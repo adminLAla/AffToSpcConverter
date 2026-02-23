@@ -22,6 +22,7 @@ public class GameAssetPacker
             throw new FileNotFoundException($"Source file not found: {sourceFilePath}");
         if (!File.Exists(mappingJsonPath))
             throw new FileNotFoundException($"Mapping JSON not found: {mappingJsonPath}");
+        ValidateReplacementType(sourceFilePath, originalGamePath);
 
         // 2. 解析映射 JSON。
         string jsonContent = File.ReadAllText(mappingJsonPath);
@@ -75,6 +76,46 @@ public class GameAssetPacker
 
         // 8. 写出加密结果文件。
         File.WriteAllBytes(outputFilePath, encryptedBytes);
+    }
+
+    // 读取映射表中的 FullLookupPath 列表，并按源文件类型过滤可替换目标。
+    public static IReadOnlyList<string> GetReplacementCandidates(string mappingJsonPath, string? sourceFilePath)
+    {
+        if (!File.Exists(mappingJsonPath))
+            throw new FileNotFoundException($"Mapping JSON not found: {mappingJsonPath}");
+
+        string jsonContent = File.ReadAllText(mappingJsonPath);
+        var mapping = ParseMapping(jsonContent);
+        var allowedTargetExts = GetAllowedTargetExtensionsForSource(sourceFilePath);
+
+        IEnumerable<string> paths = mapping.Entries!
+            .Select(x => x.FullLookupPath)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Replace('\\', '/'));
+
+        if (allowedTargetExts != null)
+        {
+            paths = paths.Where(p => allowedTargetExts.Contains(Path.GetExtension(p)));
+        }
+
+        return paths
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    // 校验源文件类型是否允许替换目标路径类型（按扩展名判定）。
+    public static void ValidateReplacementType(string sourceFilePath, string targetLookupPath)
+    {
+        var allowedTargetExts = GetAllowedTargetExtensionsForSource(sourceFilePath);
+        if (allowedTargetExts == null) return;
+
+        string targetExt = Path.GetExtension(targetLookupPath).ToLowerInvariant();
+        if (allowedTargetExts.Contains(targetExt)) return;
+
+        string sourceExt = Path.GetExtension(sourceFilePath).ToLowerInvariant();
+        string allowedDesc = string.Join(" / ", allowedTargetExts.OrderBy(x => x));
+        throw new Exception($"源文件类型 {sourceExt} 不能替换目标类型 {targetExt}。允许替换的目标类型：{allowedDesc}");
     }
 
     // 使用 XTS 逻辑加密字节数组。
@@ -225,6 +266,22 @@ public class GameAssetPacker
     }
 
     // --- JSON 辅助方法 ---
+
+    // 根据源文件扩展名返回允许替换的目标扩展名集合；返回 null 表示不额外限制。
+    private static HashSet<string>? GetAllowedTargetExtensionsForSource(string? sourceFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFilePath))
+            return null;
+
+        string sourceExt = Path.GetExtension(sourceFilePath).ToLowerInvariant();
+        return sourceExt switch
+        {
+            ".ogg" => new HashSet<string>(new[] { ".ogg", ".wav" }, StringComparer.OrdinalIgnoreCase),
+            ".txt" => new HashSet<string>(new[] { ".spc" }, StringComparer.OrdinalIgnoreCase),
+            ".spc" => new HashSet<string>(new[] { ".spc" }, StringComparer.OrdinalIgnoreCase),
+            _ => null
+        };
+    }
 
     // 解析相关数据并返回结果。
     private static MappingData ParseMapping(string jsonContent)

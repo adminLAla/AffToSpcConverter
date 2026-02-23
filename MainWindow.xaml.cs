@@ -11,6 +11,7 @@ using NAudio.Wave;
 using NAudio.Vorbis;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -27,8 +28,12 @@ public partial class MainWindow : Window
 
     // ===== 音频播放（NAudio）=====
     private IWavePlayer? _waveOut;
+    private WaveStream? _audioOutputStream;
     private WaveStream? _audioStream;
     private bool _renderHooked = false;
+    private bool _suppressWaveOutStopped;
+    private const int AudioOutputDesiredLatencyMs = 120;
+    private const int AudioOutputBufferCount = 4;
 
     // ===== 属性面板状态 =====
     private RenderItem? _selectedRenderItem;
@@ -49,6 +54,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = _vm;
+        _vm.PropertyChanged += OnMainViewModelPropertyChanged;
         // 绑定音符选中事件
         PreviewControl.NoteSelected += OnNoteSelected;
         PreviewControl.NoteClicked += OnPreviewNoteClicked;
@@ -64,6 +70,24 @@ public partial class MainWindow : Window
         BtnEditNoteTop.IsEnabled = hasSelectedEditableNote;
         BtnUndoTop.IsEnabled = _undoEventHistory.Count > 0;
         BtnRedoTop.IsEnabled = _redoEventHistory.Count > 0;
+    }
+
+    // 响应主界面设置变化（例如播放速度倍率）并同步到音频输出链。
+    private void OnMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.PreviewSpeed))
+        {
+            ApplyPlaybackSpeedToAudioOutput();
+            return;
+        }
+
+        // 预览数据被清空时自动退出可视化预览，避免界面停留在空白预览层。
+        if (e.PropertyName == nameof(MainViewModel.PreviewEvents) &&
+            !_vm.CanVisualPreview &&
+            MenuVisualPreview.IsChecked == true)
+        {
+            MenuVisualPreview.IsChecked = false;
+        }
     }
 
     // ===== 文件操作 =====
@@ -294,6 +318,7 @@ public partial class MainWindow : Window
     // 从主界面输出区快速进入可视化预览。
     private void BtnOpenVisualPreview_Click(object sender, RoutedEventArgs e)
     {
+        if (!_vm.CanVisualPreview) return;
         if (MenuVisualPreview.IsChecked == true) return;
         MenuVisualPreview.IsChecked = true;
         OnPreviewToggled(sender, e);
@@ -1008,6 +1033,163 @@ public partial class MainWindow : Window
 
     // ===== 背景音乐控制 =====
 
+    // 仅用于改变输出采样率元数据，从而实现带音高变化的变速播放。
+    // 该包装流不拥有底层流的生命周期，底层流仍由 _audioStream 统一释放。
+    private sealed class PlaybackRateWaveStream : WaveStream
+    {
+        private readonly WaveStream _source;
+        private readonly WaveFormat _waveFormat;
+
+        public PlaybackRateWaveStream(WaveStream source, double playbackRate)
+        {
+            _source = source;
+            double rate = Math.Clamp(playbackRate, 0.25, 1.5);
+
+            var srcFmt = source.WaveFormat;
+            int targetSampleRate = Math.Max(8000, (int)Math.Round(srcFmt.SampleRate * rate));
+
+            _waveFormat = srcFmt.Encoding switch
+            {
+                WaveFormatEncoding.IeeeFloat => WaveFormat.CreateIeeeFloatWaveFormat(targetSampleRate, srcFmt.Channels),
+                WaveFormatEncoding.Pcm => new WaveFormat(targetSampleRate, srcFmt.BitsPerSample, srcFmt.Channels),
+                _ => new WaveFormat(targetSampleRate, srcFmt.BitsPerSample, srcFmt.Channels)
+            };
+        }
+
+        public override WaveFormat WaveFormat => _waveFormat;
+        public override long Length => _source.Length;
+        public override long Position { get => _source.Position; set => _source.Position = value; }
+        public override int Read(byte[] buffer, int offset, int count) => _source.Read(buffer, offset, count);
+
+        public override TimeSpan CurrentTime
+        {
+            get => _source.CurrentTime;
+            set => _source.CurrentTime = value;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // 不释放 _source；由外部统一管理底层解码流生命周期。
+            base.Dispose(disposing);
+        }
+    }
+
+    // 当前播放速度倍率（用于音频与谱面同步）。
+    private double PlaybackSpeed => _vm.PreviewSpeed;
+
+    // 将 seek 目标时间夹到当前音频流可接受的范围内，避免结束后重播时越界异常。
+    private TimeSpan ClampAudioSeekTime(TimeSpan desired)
+    {
+        if (_audioStream == null) return desired;
+        if (desired < TimeSpan.Zero) return TimeSpan.Zero;
+        if (!_audioStream.CanSeek) return desired;
+
+        TimeSpan total = _audioStream.TotalTime;
+        if (total <= TimeSpan.Zero) return TimeSpan.Zero;
+
+        // 部分解码器设置到精确末尾会抛异常，这里保留 1ms 余量。
+        TimeSpan max = total - TimeSpan.FromMilliseconds(1);
+        if (max < TimeSpan.Zero) max = TimeSpan.Zero;
+        return desired > max ? max : desired;
+    }
+
+    // 安全设置音频流当前位置，统一处理 seek 越界保护。
+    private void SetAudioCurrentTimeSafe(TimeSpan desired)
+    {
+        if (_audioStream == null || !_audioStream.CanSeek) return;
+        _audioStream.CurrentTime = ClampAudioSeekTime(desired);
+    }
+
+    // 根据当前播放速度重建音频输出链（不影响底层解码流与当前位置）。
+    private void RebuildAudioOutput()
+    {
+        if (_audioStream == null) return;
+
+        DisposeWaveOutOnly();
+
+        _audioOutputStream = new PlaybackRateWaveStream(_audioStream, PlaybackSpeed);
+
+        // 预览渲染负载较高时，过低的音频缓冲会导致欠载爆音。
+        // 这里使用更稳妥的缓冲配置，时间同步由预览侧做平滑与延迟补偿。
+        var waveOut = new WaveOutEvent
+        {
+            DesiredLatency = AudioOutputDesiredLatencyMs,
+            NumberOfBuffers = AudioOutputBufferCount
+        };
+        waveOut.Init(_audioOutputStream);
+        waveOut.PlaybackStopped += OnWaveOutPlaybackStopped;
+        _waveOut = waveOut;
+    }
+
+    // 应用新的播放速度到音频输出（保持当前歌曲位置，播放中则自动续播）。
+    private void ApplyPlaybackSpeedToAudioOutput()
+    {
+        if (_audioStream == null) return;
+
+        bool wasPlaying = _vm.IsPlaying;
+        TimeSpan currentTime = _audioStream.CanSeek ? _audioStream.CurrentTime : TimeSpan.Zero;
+
+        if (wasPlaying)
+            HookRenderCallback(false);
+
+        RebuildAudioOutput();
+
+        if (_audioStream.CanSeek)
+            SetAudioCurrentTimeSafe(currentTime);
+
+        ResetPreviewAudioClock();
+
+        if (wasPlaying && _waveOut != null)
+        {
+            _waveOut.Play();
+            HookRenderCallback(true);
+        }
+    }
+
+    // 释放 WaveOut 与变速包装流，不释放底层解码流。
+    private void DisposeWaveOutOnly()
+    {
+        if (_waveOut != null)
+        {
+            _waveOut.PlaybackStopped -= OnWaveOutPlaybackStopped;
+            _suppressWaveOutStopped = true;
+            try
+            {
+                try { _waveOut.Stop(); } catch { /* ignored */ }
+                _waveOut.Dispose();
+            }
+            finally
+            {
+                _suppressWaveOutStopped = false;
+                _waveOut = null;
+            }
+        }
+
+        _audioOutputStream?.Dispose();
+        _audioOutputStream = null;
+    }
+
+    // 处理音频自然播放结束事件。
+    private void OnWaveOutPlaybackStopped(object? sender, StoppedEventArgs e)
+    {
+        if (_suppressWaveOutStopped) return;
+        Dispatcher.Invoke(StopPlayback);
+    }
+
+    // 音频设备缓冲会让听到的声音晚于解码流当前位置，这里按当前播放速度估算补偿量。
+    private double GetAudioLatencyCompensationMs()
+    {
+        if (_waveOut is not WaveOutEvent wo) return 0;
+        return wo.DesiredLatency * PlaybackSpeed;
+    }
+
+    // 预览同步总补偿 = 设备输出缓冲延迟补偿 - 用户手动同步偏移。
+    // 调用方会执行 `audioMs -= compensation`，因此偏移设为正值时等效“音频更晚 / 谱面更早”。
+    private double GetPreviewSyncCompensationMs()
+    {
+        return GetAudioLatencyCompensationMs() - _vm.PreviewSyncOffsetMs;
+    }
+
     // 选择并加载背景音乐文件。
     private void BtnOpenBgm_Click(object sender, RoutedEventArgs e)
     {
@@ -1036,14 +1218,7 @@ public partial class MainWindow : Window
             };
 
             _audioStream = raw;
-            var waveOut = new WaveOutEvent
-            {
-                DesiredLatency = 40,
-                NumberOfBuffers = 2
-            };
-            waveOut.Init(raw);
-            _waveOut = waveOut;
-            _waveOut.PlaybackStopped += (_, _) => Dispatcher.Invoke(StopPlayback);
+            RebuildAudioOutput();
 
             _vm.BgmPath = path;
             _vm.Status = $"BGM：{Path.GetFileName(path)}";
@@ -1081,7 +1256,7 @@ public partial class MainWindow : Window
 
         double seekSec = Math.Max(0, _vm.PreviewTimeMs / 1000.0);
         if (_audioStream.CanSeek)
-            _audioStream.CurrentTime = TimeSpan.FromSeconds(seekSec);
+            SetAudioCurrentTimeSafe(TimeSpan.FromSeconds(seekSec));
 
         ResetPreviewAudioClock();
         _waveOut.Play();
@@ -1101,7 +1276,12 @@ public partial class MainWindow : Window
     // 停止背景音乐播放并重置状态。
     private void StopPlayback()
     {
-        _waveOut?.Stop();
+        if (_waveOut != null)
+        {
+            _suppressWaveOutStopped = true;
+            try { _waveOut.Stop(); }
+            finally { _suppressWaveOutStopped = false; }
+        }
         ResetPreviewAudioClock();
         _vm.IsPlaying = false;
         HookRenderCallback(false);
@@ -1113,6 +1293,8 @@ public partial class MainWindow : Window
         if (_audioStream == null) return;
 
         double audioMs = _audioStream.CurrentTime.TotalMilliseconds;
+        if (_vm.IsPlaying)
+            audioMs -= GetPreviewSyncCompensationMs();
         if (double.IsNaN(audioMs) || double.IsInfinity(audioMs) || audioMs < 0) return;
 
         int ms = Math.Max(0, (int)Math.Round(audioMs));
@@ -1147,7 +1329,7 @@ public partial class MainWindow : Window
         }
 
         double elapsedMs = (nowTick - _previewAudioClockRefTick) * 1000.0 / Stopwatch.Frequency;
-        double predictedMs = _previewAudioClockRefMs + elapsedMs;
+        double predictedMs = _previewAudioClockRefMs + elapsedMs * PlaybackSpeed;
         double errorMs = actualAudioMs - predictedMs;
 
         // seek、暂停恢复或底层时钟突跳时直接重同步，避免缓慢追赶。
@@ -1168,7 +1350,7 @@ public partial class MainWindow : Window
     {
         if (!_vm.IsPlaying || _audioStream == null) return;
         double actualAudioMs = _audioStream.CurrentTime.TotalMilliseconds;
-        double audioMs = GetSmoothedAudioMs(actualAudioMs);
+        double audioMs = GetSmoothedAudioMs(actualAudioMs) - GetPreviewSyncCompensationMs();
         if (audioMs < 0) return;
 
         int ms = (int)Math.Round(audioMs);
@@ -1201,8 +1383,7 @@ public partial class MainWindow : Window
     // 释放背景音乐播放资源。
     private void DisposeAudio()
     {
-        _waveOut?.Dispose();
-        _waveOut = null;
+        DisposeWaveOutOnly();
         _audioStream?.Dispose();
         _audioStream = null;
     }

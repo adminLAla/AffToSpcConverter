@@ -133,8 +133,17 @@ public class MainViewModel : INotifyPropertyChanged
     public IReadOnlyList<ISpcEvent>? PreviewEvents
     {
         get => _previewEvents;
-        set { _previewEvents = value; OnPropertyChanged(); }
+        set
+        {
+            if (ReferenceEquals(_previewEvents, value)) return;
+            _previewEvents = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanVisualPreview));
+        }
     }
+
+    // 是否已有可用于可视化预览的谱面事件数据。
+    public bool CanVisualPreview => _previewEvents != null;
 
     private int _previewTimeMs;
     public int PreviewTimeMs
@@ -180,15 +189,30 @@ public class MainViewModel : INotifyPropertyChanged
         get => _previewSpeed;
         set
         {
-            var next = value <= 0 ? 0.01 : value;
+            // 播放速度仅允许 0.25x~1.5x，步进 0.05x。
+            var next = System.Math.Clamp(System.Math.Round(value / 0.05) * 0.05, 0.25, 1.5);
             if (System.Math.Abs(_previewSpeed - next) < 0.0001) return;
             _previewSpeed = next;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(PreviewPixelsPerSecondEffective));
         }
     }
 
-    public double PreviewPixelsPerSecondEffective => PreviewPixelsPerSecond * PreviewSpeed;
+    private int _previewSyncOffsetMs;
+    public int PreviewSyncOffsetMs
+    {
+        get => _previewSyncOffsetMs;
+        set
+        {
+            // 允许正负偏移，避免误输入极端值导致预览时间明显异常。
+            int next = System.Math.Clamp(value, -5000, 5000);
+            if (_previewSyncOffsetMs == next) return;
+            _previewSyncOffsetMs = next;
+            OnPropertyChanged();
+        }
+    }
+
+    // 当前预览“流速”显示值（px/s）；不受播放速度倍率影响。
+    public double PreviewPixelsPerSecondEffective => PreviewPixelsPerSecond;
 
     // ---- 音频 ----
     private string? _bgmPath;

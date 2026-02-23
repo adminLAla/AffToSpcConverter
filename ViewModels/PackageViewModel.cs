@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -10,6 +11,12 @@ public class PackageViewModel : INotifyPropertyChanged
 
     private string _originalFilename = "";
     public string OriginalFilename { get => _originalFilename; set { _originalFilename = value; OnPropertyChanged(); } }
+
+    private string _selectedTargetLookupPath = "";
+    public string SelectedTargetLookupPath { get => _selectedTargetLookupPath; set { _selectedTargetLookupPath = value; OnPropertyChanged(); } }
+
+    // 映射表中过滤后的可替换目标路径列表（来自 FullLookupPath）。
+    public ObservableCollection<string> TargetLookupCandidates { get; } = new();
 
     private string _outputDirectory = "";
     public string OutputDirectory { get => _outputDirectory; set { _outputDirectory = value; OnPropertyChanged(); } }
