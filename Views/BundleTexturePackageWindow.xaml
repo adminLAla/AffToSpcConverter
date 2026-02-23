@@ -1,0 +1,81 @@
+<Window x:Class="AffToSpcConverter.Views.BundleTexturePackageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="打包未加密资源（Texture2D 替换）" Height="500" Width="760"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 导入曲绘 -->
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="导入曲绘：" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,10,10"
+                 Text="{Binding ImageFilePath}" IsReadOnly="True"/>
+        <Button Grid.Row="0" Grid.Column="2" Width="92" Margin="0,0,0,10"
+                Content="导入曲绘..." Click="BtnBrowseImage_Click"/>
+
+        <!-- 导入 bundle -->
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="导入 .bundle：" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,10,10"
+                 Text="{Binding BundleFilePath}" IsReadOnly="True"/>
+        <Button Grid.Row="1" Grid.Column="2" Width="92" Margin="0,0,0,10"
+                Content="导入.bundle" Click="BtnBrowseBundle_Click"/>
+
+        <!-- 选择替换纹理 -->
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="选择替换纹理：" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <ComboBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                  Margin="0,0,0,10"
+                  ItemsSource="{Binding TextureCandidates}"
+                  SelectedItem="{Binding SelectedTexture, Mode=TwoWay}"
+                  DisplayMemberPath="DisplayText"
+                  IsEditable="False"
+                  MaxDropDownHeight="320"/>
+
+        <!-- 导出目录 -->
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="导出文件夹：" VerticalAlignment="Center" Margin="0,0,10,10"/>
+        <TextBox Grid.Row="3" Grid.Column="1" Margin="0,0,10,10"
+                 Text="{Binding OutputDirectory}" IsReadOnly="True"/>
+        <Button Grid.Row="3" Grid.Column="2" Width="92" Margin="0,0,0,10"
+                Content="选择文件夹" Click="BtnBrowseOutput_Click"/>
+
+        <!-- 状态说明 -->
+        <Border Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8" Background="#FAFAFA">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#555555"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- 操作按钮 -->
+        <Grid Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Vertical" VerticalAlignment="Center">
+                <CheckBox Content="文件被占用时自动另存为 xxx (1).bundle"
+                          IsChecked="{Binding AutoRenameWhenTargetLocked}"/>
+                <CheckBox Margin="0,4,0,0"
+                          Content="回读校验 SHA256（更稳但更慢、更占内存）"
+                          IsChecked="{Binding VerifyReadbackSha256}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="导出" Width="100" Margin="0,0,10,0" Click="BtnExport_Click"/>
+                <Button Content="关闭" Width="100" IsCancel="True"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

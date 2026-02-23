@@ -286,6 +286,12 @@ public partial class MainWindow : Window
         new PackageWindow { Owner = this }.ShowDialog();
     }
 
+    // 打开未加密 Unity bundle 的纹理替换打包窗口。
+    private void MenuPackageBundleTexture_Click(object sender, RoutedEventArgs e)
+    {
+        new BundleTexturePackageWindow { Owner = this }.ShowDialog();
+    }
+
     // 显示关于对话框。
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
     {
