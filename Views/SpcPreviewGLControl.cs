@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using AffToSpcConverter.Convert.Preview;
 using AffToSpcConverter.Models;
 using SkiaSharp;
@@ -68,6 +69,8 @@ namespace AffToSpcConverter.Views
         private const double DefaultTargetFps = 120.0;
         // 当前目标帧间隔（毫秒），由 TargetFps 换算得到。
         private double _frameTimeMs = 1000.0 / DefaultTargetFps;
+        // 是否已挂接 CompositionTarget.Rendering 作为 VSync 渲染驱动。
+        private bool _vsyncHooked;
 
         // ===== 帧率统计 / 帧时长 =====
         // 当前采样窗口内累计渲染帧数。
@@ -80,8 +83,22 @@ namespace AffToSpcConverter.Views
         private double _frameTimeSmoothed;
         // 上一帧的时间戳，用于计算帧时长。
         private long _prevFrameTick;
+        // 最近统计窗口内的 P95 帧时长（毫秒）。
+        private double _frameTimeP95;
+        // 最近统计窗口内的 P99 帧时长（毫秒）。
+        private double _frameTimeP99;
         // FPS 统计采样窗口时长（毫秒）。
         private const int FpsSampleMs = 100;
+        // 帧时长分位统计的环形缓冲区容量。
+        private const int FrameStatsCapacity = 512;
+        // 最近帧时长样本环形缓冲区（毫秒）。
+        private readonly double[] _frameTimeSamples = new double[FrameStatsCapacity];
+        // 下一个写入帧时长样本的位置。
+        private int _frameTimeSampleWriteIndex;
+        // 当前有效帧时长样本数量。
+        private int _frameTimeSampleCount;
+        // 计算分位数时复用的排序缓冲区，避免重复分配。
+        private readonly double[] _frameTimePercentileScratch = new double[FrameStatsCapacity];
 
         // ===== 渲染快照 =====
         // 供渲染线程读取的判定时间快照（double 按 long 位存储）。
@@ -144,9 +161,9 @@ namespace AffToSpcConverter.Views
 
         // ===== 显示参数 =====
         // 时间轴最小缩放（每毫秒像素数）。
-        private const double MinPxPerMs = 0.02;
+        private const double MinPxPerMs = 0.50;
         // 时间轴最大缩放（每毫秒像素数）。
-        private const double MaxPxPerMs = 1.20;
+        private const double MaxPxPerMs = 1.50;
         // 左侧标尺区域固定宽度。
         private const double RulerW = 60.0;
         // 判定线距离控件底部的默认偏移。
@@ -199,6 +216,10 @@ namespace AffToSpcConverter.Views
         private static readonly SKPaint HoldStrokePurple = MkStroke(235, 190, 255, 1, alpha: 220); // 0 轨地面 Hold 描边色。
         private static readonly SKPaint HoldFillRed = MkFill(255, 90, 90, 120); // 5 轨地面 Hold 填充色。
         private static readonly SKPaint HoldStrokeRed = MkStroke(255, 140, 140, 1, alpha: 220); // 5 轨地面 Hold 描边色。
+        private static readonly SKPaint HoldCenterLineDeepBlue = MkHoldCenterLinePaint(HoldFillDeepBlue.Color); // 普通窄地面 Hold 中线。
+        private static readonly SKPaint HoldCenterLineWhite = MkHoldCenterLinePaint(HoldFillWhite.Color); // 宽地面 Hold 中线。
+        private static readonly SKPaint HoldCenterLinePurple = MkHoldCenterLinePaint(HoldFillPurple.Color); // 0 轨地面 Hold 中线。
+        private static readonly SKPaint HoldCenterLineRed = MkHoldCenterLinePaint(HoldFillRed.Color); // 5 轨地面 Hold 中线。
         private static readonly SKPaint FlickFillLeftPaint = MkFill(220, 200, 80); // 左向 Flick 填充色。
         private static readonly SKPaint FlickStrokeLeftPaint = MkStroke(255, 240, 120, 1.5f); // 左向 Flick 描边色。
         private static readonly SKPaint FlickFillRightPaint = MkFill(80, 200, 120); // 右向 Flick 填充色。
@@ -225,6 +246,8 @@ namespace AffToSpcConverter.Views
         // ===== 交互与选中事件 =====
         // 点击或切换选中项时抛出的事件。
         public event Action<RenderItem?>? NoteSelected;
+        // 点击命中音符后的事件（携带点击次数，供单击/双击编辑策略使用）。
+        public event Action<RenderItem?, int>? NoteClicked;
         // 完成新增音符放置后抛出的提交事件。
         public event Action<AddNotePlacement>? NotePlacementCommitted;
 
@@ -244,24 +267,66 @@ namespace AffToSpcConverter.Views
         {
             Focusable = true;
             IgnorePixelScaling = true;
-            WriteDouble(ref _snapPxPerMsBits, 0.12);
+            WriteDouble(ref _snapPxPerMsBits, 1.0);
             Loaded += OnLoaded;
             Unloaded += OnUnloaded;
         }
 
-        // 控件加载后重算布局并启动渲染循环。
+        // 控件加载后重算布局并按当前渲染模式启动预览刷新驱动。
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             RecalcLayout();
-            StartRenderLoop();
+            StartRenderDriver();
         }
 
-        // 控件卸载时停止渲染循环。
-        private void OnUnloaded(object sender, RoutedEventArgs e) => StopRenderLoop();
+        // 控件卸载时停止所有预览刷新驱动。
+        private void OnUnloaded(object sender, RoutedEventArgs e) => StopRenderDriver();
+
+        // 根据当前 VSync 设置启动对应的刷新驱动（后台线程或 CompositionTarget.Rendering）。
+        private void StartRenderDriver()
+        {
+            if (UseVsync)
+                StartVsyncRendering();
+            else
+                StartRenderLoop();
+        }
+
+        // 停止所有刷新驱动，供卸载与切换渲染模式时调用。
+        private void StopRenderDriver()
+        {
+            StopVsyncRendering();
+            StopRenderLoop();
+        }
+
+        // 启用基于 WPF 合成帧回调的 VSync 渲染驱动。
+        private void StartVsyncRendering()
+        {
+            if (_vsyncHooked) return;
+            _lastFpsTick = Stopwatch.GetTimestamp();
+            _prevFrameTick = _lastFpsTick;
+            CompositionTarget.Rendering += OnVsyncRendering;
+            _vsyncHooked = true;
+        }
+
+        // 停用 VSync 渲染驱动。
+        private void StopVsyncRendering()
+        {
+            if (!_vsyncHooked) return;
+            CompositionTarget.Rendering -= OnVsyncRendering;
+            _vsyncHooked = false;
+        }
+
+        // 在每次屏幕合成帧回调时触发一次重绘，使渲染节奏与显示刷新同步。
+        private void OnVsyncRendering(object? sender, EventArgs e)
+        {
+            if (!UseVsync || !IsVisible) return;
+            InvalidateVisual();
+        }
 
         // 启动后台渲染线程并初始化帧率统计计时。
         private void StartRenderLoop()
         {
+            if (UseVsync) return;
             if (_running) return;
             _running = true;
             _lastFpsTick = Stopwatch.GetTimestamp();
@@ -281,15 +346,34 @@ namespace AffToSpcConverter.Views
             _running = false;
             _renderThread?.Join(200);
             _renderThread = null;
+            Volatile.Write(ref _invalidateRequestPending, 0);
         }
 
         // 缓存 UI 线程重绘委托，避免渲染线程循环中重复捕获。
         private Action? _invalidateAction;
+        // UI 线程执行的重绘包装委托，用于重置“已排队”标记。
+        private Action? _invalidateDispatchAction;
+        // 是否已有待执行的重绘请求在 UI 队列中。
+        private int _invalidateRequestPending;
+
+        // 在 UI 线程执行重绘，并在结束后允许下一次重绘请求入队。
+        private void DispatchInvalidateOnUiThread()
+        {
+            try
+            {
+                _invalidateAction?.Invoke();
+            }
+            finally
+            {
+                Volatile.Write(ref _invalidateRequestPending, 0);
+            }
+        }
 
         // 按目标帧率循环触发界面重绘请求。
         private void RenderLoop()
         {
             _invalidateAction = InvalidateVisual;
+            _invalidateDispatchAction = DispatchInvalidateOnUiThread;
             var sw = Stopwatch.StartNew();
             double nextFrameMs = sw.Elapsed.TotalMilliseconds;
 
@@ -309,13 +393,20 @@ namespace AffToSpcConverter.Views
 
                 nextFrameMs += frameTimeMs;
 
+                if (Interlocked.Exchange(ref _invalidateRequestPending, 1) != 0)
+                    continue;
+
                 try
                 {
                     Dispatcher.BeginInvoke(
                         System.Windows.Threading.DispatcherPriority.Render,
-                        _invalidateAction!);
+                        _invalidateDispatchAction!);
                 }
-                catch { break; }
+                catch
+                {
+                    Volatile.Write(ref _invalidateRequestPending, 0);
+                    break;
+                }
             }
         }
 
@@ -404,7 +495,7 @@ namespace AffToSpcConverter.Views
         // PixelsPerSecond 的依赖属性定义；变化时同步更新 PxPerMs。
         public static readonly DependencyProperty PixelsPerSecondProperty =
             DependencyProperty.Register(nameof(PixelsPerSecond), typeof(double), typeof(SpcPreviewGLControl),
-                new FrameworkPropertyMetadata(240.0, (d, _) =>
+                new FrameworkPropertyMetadata(1000.0, (d, _) =>
                 {
                     var c = (SpcPreviewGLControl)d;
                     c.UpdatePxPerMs();
@@ -429,7 +520,7 @@ namespace AffToSpcConverter.Views
         private void UpdatePxPerMs()
         {
             var speed = Math.Max(0.01, Speed);
-            PxPerMs = PixelsPerSecond * speed / 1000.0;
+            PxPerMs = Math.Clamp(PixelsPerSecond * speed / 1000.0, MinPxPerMs, MaxPxPerMs);
         }
 
         // 当前用于绘制的只读渲染模型快照。
@@ -477,7 +568,7 @@ namespace AffToSpcConverter.Views
         // PxPerMs 的依赖属性定义；变化时更新渲染快照并清理标尺缓存。
         public static readonly DependencyProperty PxPerMsProperty =
             DependencyProperty.Register(nameof(PxPerMs), typeof(double), typeof(SpcPreviewGLControl),
-                new FrameworkPropertyMetadata(0.12, (d, _) =>
+                new FrameworkPropertyMetadata(1.0, (d, _) =>
                 {
                     var c = (SpcPreviewGLControl)d;
                     WriteDouble(ref c._snapPxPerMsBits, c.PxPerMs);
@@ -499,6 +590,23 @@ namespace AffToSpcConverter.Views
                     var c = (SpcPreviewGLControl)d;
                     int fps = Math.Clamp(c.TargetFps, 30, 240);
                     Volatile.Write(ref c._frameTimeMs, 1000.0 / fps);
+                }));
+
+        // 是否使用 VSync（WPF 合成帧）作为预览刷新驱动。
+        public bool UseVsync
+        {
+            get => (bool)GetValue(UseVsyncProperty);
+            set => SetValue(UseVsyncProperty, value);
+        }
+        // UseVsync 的依赖属性定义；变化时切换渲染驱动。
+        public static readonly DependencyProperty UseVsyncProperty =
+            DependencyProperty.Register(nameof(UseVsync), typeof(bool), typeof(SpcPreviewGLControl),
+                new FrameworkPropertyMetadata(true, (d, _) =>
+                {
+                    var c = (SpcPreviewGLControl)d;
+                    if (!c.IsLoaded) return;
+                    c.StopRenderDriver();
+                    c.StartRenderDriver();
                 }));
 
         // 是否在右上角显示 FPS 与帧时长统计。
@@ -600,6 +708,42 @@ namespace AffToSpcConverter.Views
 
         // 上次处理鼠标移动的 TickCount，用于节流高频移动事件。
         private int _lastMouseMoveTick;
+        // 双击判定时间窗口（毫秒）。
+        private const long ManualDoubleClickThresholdMs = 280;
+        // 双击判定允许的最大位移（像素）。
+        private const double ManualDoubleClickMoveThresholdPx = 6.0;
+        // 上一次左键点击释放的时间戳（Environment.TickCount64）。
+        private long _lastLeftClickUpTickMs = long.MinValue;
+        // 上一次左键点击释放的位置（用于双击位移判定）。
+        private Point _lastLeftClickUpPos;
+        // 是否存在等待配对为“双击”的左键单击。
+        private bool _pendingLeftSingleClick;
+
+        // 手动检测左键单击/双击，避免在捕获鼠标的拖拽交互下丢失双击计数。
+        private int DetectLeftClickCount(Point pos)
+        {
+            long nowMs = Environment.TickCount64;
+            if (_pendingLeftSingleClick)
+            {
+                long dt = nowMs - _lastLeftClickUpTickMs;
+                double dx = pos.X - _lastLeftClickUpPos.X;
+                double dy = pos.Y - _lastLeftClickUpPos.Y;
+                double dist2 = dx * dx + dy * dy;
+                double move2 = ManualDoubleClickMoveThresholdPx * ManualDoubleClickMoveThresholdPx;
+                if (dt >= 0 && dt <= ManualDoubleClickThresholdMs && dist2 <= move2)
+                {
+                    // 成功配对一次双击后立即复位，避免三击产生重复双击触发。
+                    _pendingLeftSingleClick = false;
+                    _lastLeftClickUpTickMs = long.MinValue;
+                    return 2;
+                }
+            }
+
+            _pendingLeftSingleClick = true;
+            _lastLeftClickUpTickMs = nowMs;
+            _lastLeftClickUpPos = pos;
+            return 1;
+        }
 
         // 处理鼠标移动，更新拖拽滚动或缩放状态。
         protected override void OnMouseMove(MouseEventArgs e)
@@ -648,7 +792,10 @@ namespace AffToSpcConverter.Views
             if (e.ChangedButton == MouseButton.Left && _dragTime)
             {
                 if (_isDragClick)
-                    HandleClick(e.GetPosition(this));
+                {
+                    var clickPos = e.GetPosition(this);
+                    HandleClick(clickPos);
+                }
                 _dragTime = false;
                 ReleaseMouseCapture();
                 e.Handled = true;
@@ -845,9 +992,15 @@ namespace AffToSpcConverter.Views
                 float yStart = (float)(judgeY - (item.TimeMs    - judgeTimeMs) * pxPerMs);
                 float yEnd   = (float)(judgeY - (item.EndTimeMs - judgeTimeMs) * pxPerMs);
 
-                // Flick 三角形顶部会额外上延，命中框需扩展顶部范围。
-                float extraTop = item.Type == RenderItemType.SkyFlick ? FlickTriH : 0;
-                float top    = Math.Min(yStart, yEnd) - extraTop - 8;
+                // 不同音符的可见形状高度不同，命中框按类型扩展可点击区域。
+                float extraTop = item.Type switch
+                {
+                    RenderItemType.SkyFlick => FlickTriH,
+                    // Tap 已改为“底边对齐时间线”，形状主体整体在时间线之上。
+                    RenderItemType.GroundTap => TapHalfH * 2f,
+                    _ => 0f
+                };
+                float top = Math.Min(yStart, yEnd) - extraTop - 8;
                 float bottom = Math.Max(yStart, yEnd) + 8;
 
                 if (clickY < top || clickY > bottom) continue;
@@ -911,8 +1064,18 @@ namespace AffToSpcConverter.Views
                 }
             }
 
+            if (best == null)
+            {
+                // 点击空白区域时清除待配对的单击，避免下一次点中音符被误判为双击。
+                _pendingLeftSingleClick = false;
+                _lastLeftClickUpTickMs = long.MinValue;
+            }
+
+            int clickCount = best != null ? DetectLeftClickCount(pos) : 1;
+
             SelectedItemIndex = bestIdx;
             NoteSelected?.Invoke(best);
+            NoteClicked?.Invoke(best, Math.Max(1, clickCount));
         }
 
         // 根据当前事件列表强制刷新渲染模型。
@@ -941,6 +1104,7 @@ namespace AffToSpcConverter.Views
             long nowTick = Stopwatch.GetTimestamp();
             double thisFrameMs = (nowTick - _prevFrameTick) * 1000.0 / Stopwatch.Frequency;
             _prevFrameTick = nowTick;
+            RecordFrameTimeSample(thisFrameMs);
             if (_frameTimeSmoothed <= 0) _frameTimeSmoothed = thisFrameMs;
             else _frameTimeSmoothed = _frameTimeSmoothed * 0.85 + thisFrameMs * 0.15;
 
@@ -949,6 +1113,7 @@ namespace AffToSpcConverter.Views
             if (elapsedSample >= FpsSampleMs)
             {
                 _fps = (int)Math.Round(_frameCount * 1000.0 / Math.Max(1, elapsedSample));
+                ComputeFrameTimePercentiles();
                 _frameCount = 0;
                 _lastFpsTick = nowTick;
             }
@@ -1182,8 +1347,9 @@ namespace AffToSpcConverter.Views
 
              double tMin = judgeTimeMs + (judgeY - clipBottom) / pxPerMs;
              double tMax = judgeTimeMs + (judgeY - clipTop) / pxPerMs;
+             int scanStart = FindFirstIndexByTime(items, (int)Math.Floor(tMin) - model.MaxItemDurationMs - 1);
 
-             for (int idx = 0; idx < items.Count; idx++)
+             for (int idx = scanStart; idx < items.Count; idx++)
              {
                  var item = items[idx];
                  if (item.Type != RenderItemType.GroundTap && item.Type != RenderItemType.GroundHold)
@@ -1218,8 +1384,9 @@ namespace AffToSpcConverter.Views
 
              double tMin = judgeTimeMs + (judgeY - clipBottom) / pxPerMs;
              double tMax = judgeTimeMs + (judgeY - clipTop) / pxPerMs;
+             int scanStart = FindFirstIndexByTime(items, (int)Math.Floor(tMin) - model.MaxItemDurationMs - 1);
 
-             for (int idx = 0; idx < items.Count; idx++)
+             for (int idx = scanStart; idx < items.Count; idx++)
              {
                  var item = items[idx];
                  if (item.Type != RenderItemType.SkyFlick && item.Type != RenderItemType.SkyArea)
@@ -1256,9 +1423,9 @@ namespace AffToSpcConverter.Views
             float width = (x1 - x0) - 4;
             if (width <= 0) return;
 
-            // Tap 点击范围比实际矩形略宽，左右各扩展 2 像素便于点选。
-            var rect = new SKRect(x0 + 2, y - TapHalfH, x0 + 2 + width, y + TapHalfH);
-            var (fill, stroke, _, _) = GetGroundNotePaints(lane, kind);
+            // Tap 底边与时间线对齐，视觉上更像从判定线/拍线落下后“落座”到轨道。
+            var rect = new SKRect(x0 + 2, y - TapHalfH * 2f, x0 + 2 + width, y);
+            var (fill, stroke, _, _, _) = GetGroundNotePaints(lane, kind);
             canvas.DrawRoundRect(rect, 3, 3, fill);
             canvas.DrawRoundRect(rect, 3, 3, stroke);
             if (selected)
@@ -1287,9 +1454,9 @@ namespace AffToSpcConverter.Views
             if (width <= 0) return;
 
             var body = new SKRect(x0 + 2, top, x0 + 2 + width, bottom);
-            var (_, _, fill, stroke) = GetGroundNotePaints(lane, kind);
+            var (_, _, fill, stroke, centerLinePaint) = GetGroundNotePaints(lane, kind);
             canvas.DrawRect(body, fill);
-            PaintHoldCenterLine(canvas, body, fill);
+            PaintHoldCenterLine(canvas, body, centerLinePaint);
             canvas.DrawRect(body, stroke);
             if (selected)
             {
@@ -1299,10 +1466,9 @@ namespace AffToSpcConverter.Views
         }
 
         // 在 Hold 音符中线位置绘制加深竖线以增强辨识度。
-        private static void PaintHoldCenterLine(SKCanvas canvas, SKRect body, SKPaint fill)
+        private static void PaintHoldCenterLine(SKCanvas canvas, SKRect body, SKPaint linePaint)
         {
             float centerX = (body.Left + body.Right) * 0.5f;
-            var linePaint = MkHoldCenterLinePaint(fill.Color);
             canvas.DrawLine(centerX, body.Top, centerX, body.Bottom, linePaint);
         }
 
@@ -1333,17 +1499,17 @@ namespace AffToSpcConverter.Views
         }
 
         // 根据轨道位置与音符宽度类型选择地面音符的填充/描边配色。
-        private static (SKPaint tapFill, SKPaint tapStroke, SKPaint holdFill, SKPaint holdStroke) GetGroundNotePaints(int lane, int kind)
+        private static (SKPaint tapFill, SKPaint tapStroke, SKPaint holdFill, SKPaint holdStroke, SKPaint holdCenterLine) GetGroundNotePaints(int lane, int kind)
         {
             if (lane == 0)
-                return (TapFillPurple, TapStrokePurple, HoldFillPurple, HoldStrokePurple);
+                return (TapFillPurple, TapStrokePurple, HoldFillPurple, HoldStrokePurple, HoldCenterLinePurple);
             if (lane == 5)
-                return (TapFillRed, TapStrokeRed, HoldFillRed, HoldStrokeRed);
+                return (TapFillRed, TapStrokeRed, HoldFillRed, HoldStrokeRed, HoldCenterLineRed);
 
             if (kind > 1)
-                return (TapFillWhite, TapStrokeWhite, HoldFillWhite, HoldStrokeWhite);
+                return (TapFillWhite, TapStrokeWhite, HoldFillWhite, HoldStrokeWhite, HoldCenterLineWhite);
 
-            return (TapFillDeepBlue, TapStrokeDeepBlue, HoldFillDeepBlue, HoldStrokeDeepBlue);
+            return (TapFillDeepBlue, TapStrokeDeepBlue, HoldFillDeepBlue, HoldStrokeDeepBlue, HoldCenterLineDeepBlue);
         }
 
         // 绘制单个天空 Flick 音符，并按天空面板尺寸缓存路径。
@@ -1418,21 +1584,70 @@ namespace AffToSpcConverter.Views
         // ===== 帧率显示 =====
         // 上次生成的 FPS 文本，键值未变化时直接复用字符串。
         private string _lastStatsStr = "";
-        // FPS 文本缓存键（由 FPS 与帧时长拼接生成）。
-        private int _lastStatsKey = -1;
+        // FPS 文本缓存键（由 FPS/ft/P95/P99 与 VSync 状态拼接生成）。
+        private long _lastStatsKey = -1;
+
+        // 将一帧的耗时写入环形缓冲区，供分位统计使用。
+        private void RecordFrameTimeSample(double frameMs)
+        {
+            if (frameMs <= 0 || double.IsNaN(frameMs) || double.IsInfinity(frameMs))
+                return;
+
+            _frameTimeSamples[_frameTimeSampleWriteIndex] = frameMs;
+            _frameTimeSampleWriteIndex = (_frameTimeSampleWriteIndex + 1) % FrameStatsCapacity;
+            if (_frameTimeSampleCount < FrameStatsCapacity)
+                _frameTimeSampleCount++;
+        }
+
+        // 根据最近帧时长样本计算 P95 / P99。
+        private void ComputeFrameTimePercentiles()
+        {
+            int count = _frameTimeSampleCount;
+            if (count <= 0)
+            {
+                _frameTimeP95 = 0;
+                _frameTimeP99 = 0;
+                return;
+            }
+
+            Array.Copy(_frameTimeSamples, _frameTimePercentileScratch, count);
+            Array.Sort(_frameTimePercentileScratch, 0, count);
+            _frameTimeP95 = GetPercentileFromSorted(_frameTimePercentileScratch, count, 0.95);
+            _frameTimeP99 = GetPercentileFromSorted(_frameTimePercentileScratch, count, 0.99);
+        }
+
+        // 从已排序样本中读取指定分位值（线性插值）。
+        private static double GetPercentileFromSorted(double[] sorted, int count, double percentile)
+        {
+            if (count <= 0) return 0;
+            if (count == 1) return sorted[0];
+
+            double pos = Math.Clamp(percentile, 0.0, 1.0) * (count - 1);
+            int lo = (int)Math.Floor(pos);
+            int hi = Math.Min(count - 1, lo + 1);
+            double t = pos - lo;
+            return sorted[lo] + (sorted[hi] - sorted[lo]) * t;
+        }
 
         // 在右上角绘制 FPS 与帧时长统计信息。
         private void PaintFps(SKCanvas canvas, float w)
         {
             int fps = _fps;
-            int ftUs = (int)(_frameTimeSmoothed * 100);
-            int key = fps * 100000 + ftUs;
+            int ftX10 = (int)Math.Round(_frameTimeSmoothed * 10.0);
+            int p95X10 = (int)Math.Round(_frameTimeP95 * 10.0);
+            int p99X10 = (int)Math.Round(_frameTimeP99 * 10.0);
+            long key =
+                (((long)(UseVsync ? 1 : 0) & 0x1) << 60) |
+                (((long)fps & 0xFFFF) << 44) |
+                (((long)ftX10 & 0x3FFF) << 30) |
+                (((long)p95X10 & 0x3FFF) << 16) |
+                ((long)p99X10 & 0xFFFF);
             if (key != _lastStatsKey)
             {
                 _lastStatsKey = key;
-                _lastStatsStr = $"FPS: {fps}  ft: {_frameTimeSmoothed:0.0}ms";
+                _lastStatsStr = $"{(UseVsync ? "VSync " : "")}FPS:{fps}  ft:{_frameTimeSmoothed:0.0}ms  P95:{_frameTimeP95:0.0}  P99:{_frameTimeP99:0.0}";
             }
-            DrawText(canvas, _lastStatsStr, w - 160, 10, FpsPaint);
+            DrawText(canvas, _lastStatsStr, Math.Max(4, w - 460), 10, FpsPaint);
         }
 
         // 按左上对齐方式在画布指定位置绘制文本。
@@ -1518,7 +1733,7 @@ namespace AffToSpcConverter.Views
         // 停止渲染循环并释放预览控件持有的缓存资源。
         public void Dispose()
         {
-            StopRenderLoop();
+            StopRenderDriver();
             ClearRulerTextCache();
             ClearFlickPathCache();
         }

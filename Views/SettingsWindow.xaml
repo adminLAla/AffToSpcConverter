@@ -109,7 +109,18 @@
                                 <ComboBoxItem Content="165"/>
                             </ComboBox>
                         </StackPanel>
-                        <CheckBox Content="显示 FPS/帧时间" IsChecked="{Binding ShowFpsStats}"/>
+                        <CheckBox Content="启用 VSync（跟随显示器刷新）" IsChecked="{Binding PreviewUseVsync}" Margin="0,0,0,6"/>
+                        <TextBlock Text="启用 VSync 时，目标 FPS 仅在关闭 VSync 后生效。"
+                                   Foreground="#777777" FontSize="11" Margin="22,0,0,6"/>
+                        <CheckBox Content="显示 FPS/ft/P95/P99" IsChecked="{Binding ShowFpsStats}"/>
+                        <CheckBox Content="播放时鼠标不可选中音符" IsChecked="{Binding DisableNoteSelectionWhilePlaying}" Margin="0,8,0,6"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                            <TextBlock Width="180" VerticalAlignment="Center" Text="编辑音符触发方式"/>
+                            <ComboBox Width="220" SelectedValuePath="Tag" SelectedValue="{Binding PreviewNoteEditTriggerMode}">
+                                <ComboBoxItem Tag="single" Content="鼠标左键单击音符编辑"/>
+                                <ComboBoxItem Tag="double" Content="鼠标左键双击音符编辑"/>
+                            </ComboBox>
+                        </StackPanel>
                     </StackPanel>
                 </GroupBox>
 

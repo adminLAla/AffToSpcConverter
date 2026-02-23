@@ -11,6 +11,7 @@ using NAudio.Wave;
 using NAudio.Vorbis;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -38,6 +39,10 @@ public partial class MainWindow : Window
     private readonly List<(string fieldName, TextBox textBox)> _propFields = new();
     // 下拉框字段：(字段名, ComboBox) — 用于枚举/有限选项
     private readonly List<(string fieldName, ComboBox comboBox)> _propComboFields = new();
+    // 预览编辑历史：撤回栈（存放操作前快照）。
+    private readonly Stack<List<ISpcEvent>> _undoEventHistory = new();
+    // 预览编辑历史：恢复栈（存放被撤回的快照）。
+    private readonly Stack<List<ISpcEvent>> _redoEventHistory = new();
 
     // 初始化主窗口并绑定预览事件。
     public MainWindow()
@@ -46,7 +51,19 @@ public partial class MainWindow : Window
         DataContext = _vm;
         // 绑定音符选中事件
         PreviewControl.NoteSelected += OnNoteSelected;
+        PreviewControl.NoteClicked += OnPreviewNoteClicked;
         PreviewControl.NotePlacementCommitted += OnNotePlacementCommitted;
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 根据当前选中状态与撤回/恢复历史更新顶部编辑按钮可用性。
+    private void RefreshPreviewEditButtonStates()
+    {
+        bool hasSelectedEditableNote = _selectedRenderItem?.SourceEvent != null;
+        BtnDeleteNoteTop.IsEnabled = hasSelectedEditableNote;
+        BtnEditNoteTop.IsEnabled = hasSelectedEditableNote;
+        BtnUndoTop.IsEnabled = _undoEventHistory.Count > 0;
+        BtnRedoTop.IsEnabled = _redoEventHistory.Count > 0;
     }
 
     // ===== 文件操作 =====
@@ -84,6 +101,7 @@ public partial class MainWindow : Window
             _vm.GeneratedSpcText = spcText;
             _vm.SpcPreview = spcText;
             _vm.PreviewEvents = events;
+            ResetPreviewEditHistory();
 
             // 计算事件的结束时间（用于预览时间范围）。
             static int EndTime(ISpcEvent ev) => ev switch
@@ -161,6 +179,7 @@ public partial class MainWindow : Window
 
             var result = AffToSpcConverter.Convert.AffToSpcConverter.Convert(aff, opt);
             _vm.PreviewEvents = result.Events;
+            ResetPreviewEditHistory();
 
             // 计算事件的结束时间（用于预览时间范围）。
             static int EndTime(ISpcEvent e) => e switch
@@ -257,6 +276,12 @@ public partial class MainWindow : Window
     {
         bool show = MenuVisualPreview.IsChecked == true;
 
+        if (!show && _vm.IsPlaying)
+        {
+            SyncPreviewTimeFromAudioStream();
+            PausePlayback();
+        }
+
         // 切换内容层
         PreviewOverlay.Visibility  = show ? Visibility.Visible   : Visibility.Collapsed;
         TextPanelsGrid.Visibility  = show ? Visibility.Collapsed : Visibility.Visible;
@@ -264,6 +289,14 @@ public partial class MainWindow : Window
         // 切换工具栏：预览模式用背景音乐工具栏，普通模式用文件工具栏
         ToolbarText.Visibility    = show ? Visibility.Collapsed : Visibility.Visible;
         ToolbarPreview.Visibility = show ? Visibility.Visible   : Visibility.Collapsed;
+    }
+
+    // 从主界面输出区快速进入可视化预览。
+    private void BtnOpenVisualPreview_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuVisualPreview.IsChecked == true) return;
+        MenuVisualPreview.IsChecked = true;
+        OnPreviewToggled(sender, e);
     }
 
     // ===== 音符增删 =====
@@ -353,6 +386,7 @@ public partial class MainWindow : Window
 
         if (newEvent == null) return;
 
+        PushUndoSnapshotForPreviewEdit();
         events.Add(newEvent);
         events.Sort((a, b) =>
         {
@@ -368,11 +402,39 @@ public partial class MainWindow : Window
     // 更新事件列表并刷新文本与预览。
     private void ApplyEventsAndRefresh(List<ISpcEvent> events)
     {
+        // 同步预览时间范围，避免新增/删除长音符后滑条上限滞后。
+        static int EndTime(ISpcEvent e) => e switch
+        {
+            SpcHold h => h.TimeMs + h.DurationMs,
+            SpcSkyArea s => s.TimeMs + s.DurationMs,
+            _ => e.TimeMs
+        };
+
         _vm.PreviewEvents = events;
+        _vm.PreviewMaxTimeMs = Math.Max(5000, events.Count > 0 ? events.Max(EndTime) : 5000);
+        _vm.PreviewTimeMs = Math.Clamp(_vm.PreviewTimeMs, 0, _vm.PreviewMaxTimeMs);
         var spcText = IO.SpcWriter.Write(events);
         _vm.GeneratedSpcText = spcText;
         _vm.SpcPreview = spcText;
         PreviewControl.RefreshModel();
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 清空预览编辑的撤回/恢复历史（通常在重新加载或重新转换谱面后调用）。
+    private void ResetPreviewEditHistory()
+    {
+        _undoEventHistory.Clear();
+        _redoEventHistory.Clear();
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 记录当前预览事件列表快照，供后续撤回。
+    private void PushUndoSnapshotForPreviewEdit()
+    {
+        if (_vm.PreviewEvents == null) return;
+        _undoEventHistory.Push(new List<ISpcEvent>(_vm.PreviewEvents));
+        _redoEventHistory.Clear();
+        RefreshPreviewEditButtonStates();
     }
 
     // 删除当前选中的音符并刷新预览与文本。
@@ -398,6 +460,7 @@ public partial class MainWindow : Window
         }
 
         var removed = events[idx];
+        PushUndoSnapshotForPreviewEdit();
         events.RemoveAt(idx);
 
         // 更新预览与文本
@@ -405,6 +468,54 @@ public partial class MainWindow : Window
 
         HidePropPanel();
         _vm.Status = $"已删除 {removed.Type}（{removed.TimeMs}ms）";
+    }
+
+    // 打开当前选中音符的编辑面板。
+    private void BtnEditNote_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedRenderItem?.SourceEvent == null)
+        {
+            MessageBox.Show("请先选中一个音符。");
+            return;
+        }
+
+        ShowPropPanel(_selectedRenderItem);
+    }
+
+    // 撤回上一次预览编辑操作（添加/删除/编辑）。
+    private void BtnUndoLastOperation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_undoEventHistory.Count == 0)
+        {
+            _vm.Status = "没有可撤回的操作。";
+            return;
+        }
+
+        if (_vm.PreviewEvents != null)
+            _redoEventHistory.Push(new List<ISpcEvent>(_vm.PreviewEvents));
+
+        var snapshot = _undoEventHistory.Pop();
+        HidePropPanel();
+        ApplyEventsAndRefresh(new List<ISpcEvent>(snapshot));
+        _vm.Status = "已撤回上一次操作。";
+    }
+
+    // 恢复刚刚撤回的预览编辑操作。
+    private void BtnRedoLastOperation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_redoEventHistory.Count == 0)
+        {
+            _vm.Status = "没有可恢复的操作。";
+            return;
+        }
+
+        if (_vm.PreviewEvents != null)
+            _undoEventHistory.Push(new List<ISpcEvent>(_vm.PreviewEvents));
+
+        var snapshot = _redoEventHistory.Pop();
+        HidePropPanel();
+        ApplyEventsAndRefresh(new List<ISpcEvent>(snapshot));
+        _vm.Status = "已恢复上一次操作。";
     }
 
     // ===== 视图模式切换（合并/分离）=====
@@ -431,14 +542,45 @@ public partial class MainWindow : Window
 
     // ===== 音符选中与属性面板 =====
 
-    // 收到预览控件的音符选中事件，打开或关闭属性面板。
+    // 收到预览控件的音符选中事件，更新当前选中项并按需关闭属性面板。
     private void OnNoteSelected(RenderItem? item)
     {
+        if (_vm.IsPlaying && _vm.DisableNoteSelectionWhilePlaying)
+        {
+            HidePropPanel();
+            return;
+        }
+
         _selectedRenderItem = item;
 
         if (item == null || item.SourceEvent == null)
         {
             HidePropPanel();
+            return;
+        }
+
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 收到预览控件点击命中事件，根据设置决定是否打开音符编辑面板。
+    private void OnPreviewNoteClicked(RenderItem? item, int clickCount)
+    {
+        if (_vm.IsPlaying && _vm.DisableNoteSelectionWhilePlaying)
+        {
+            HidePropPanel();
+            return;
+        }
+
+        if (item == null || item.SourceEvent == null)
+            return;
+
+        bool editOnDoubleClick = _vm.PreviewNoteEditTriggerMode == "double";
+        if (editOnDoubleClick)
+        {
+            if (clickCount >= 2)
+                ShowPropPanel(item);
+            else
+                HidePropPanel(clearSelection: false);
             return;
         }
 
@@ -712,13 +854,17 @@ public partial class MainWindow : Window
 
     // ── 隐藏属性面板 ─────────────────────────────────────────────────
 
-    // 隐藏属性面板并清除当前选中项。
-    private void HidePropPanel()
+    // 隐藏属性面板，并可选地清除当前选中项。
+    private void HidePropPanel(bool clearSelection = true)
     {
         PropPanel.Visibility = Visibility.Collapsed;
         PropPanelColumn.Width = new GridLength(0);
-        _selectedRenderItem = null;
-        PreviewControl.SelectedItemIndex = -1;
+        if (clearSelection)
+        {
+            _selectedRenderItem = null;
+            PreviewControl.SelectedItemIndex = -1;
+        }
+        RefreshPreviewEditButtonStates();
     }
 
     // ── 时间字段微调 ─────────────────────────────────────────────────
@@ -789,15 +935,19 @@ public partial class MainWindow : Window
 
         if (newEvent == null) return;
 
+        PushUndoSnapshotForPreviewEdit();
         // 写回事件列表
         events[idx] = newEvent;
 
+        events.Sort((a, b) =>
+        {
+            int c = a.TimeMs.CompareTo(b.TimeMs);
+            if (c != 0) return c;
+            return ((int)a.Type).CompareTo((int)b.Type);
+        });
+
         // 更新 SPC 文本与预览
-        var spcText = SpcWriter.Write(events);
-        _vm.GeneratedSpcText = spcText;
-        _vm.SpcPreview = spcText;
-        _vm.PreviewEvents = events;
-        PreviewControl.RefreshModel();
+        ApplyEventsAndRefresh(events);
 
         _vm.Status = $"已应用 {newEvent.Type} 音符修改（{timeMs}ms）";
         HidePropPanel();
@@ -886,8 +1036,13 @@ public partial class MainWindow : Window
             };
 
             _audioStream = raw;
-            _waveOut = new WaveOutEvent();
-            _waveOut.Init(raw);
+            var waveOut = new WaveOutEvent
+            {
+                DesiredLatency = 40,
+                NumberOfBuffers = 2
+            };
+            waveOut.Init(raw);
+            _waveOut = waveOut;
             _waveOut.PlaybackStopped += (_, _) => Dispatcher.Invoke(StopPlayback);
 
             _vm.BgmPath = path;
@@ -928,6 +1083,7 @@ public partial class MainWindow : Window
         if (_audioStream.CanSeek)
             _audioStream.CurrentTime = TimeSpan.FromSeconds(seekSec);
 
+        ResetPreviewAudioClock();
         _waveOut.Play();
         _vm.IsPlaying = true;
         HookRenderCallback(true);
@@ -937,6 +1093,7 @@ public partial class MainWindow : Window
     private void PausePlayback()
     {
         _waveOut?.Pause();
+        ResetPreviewAudioClock();
         _vm.IsPlaying = false;
         HookRenderCallback(false);
     }
@@ -945,28 +1102,85 @@ public partial class MainWindow : Window
     private void StopPlayback()
     {
         _waveOut?.Stop();
+        ResetPreviewAudioClock();
         _vm.IsPlaying = false;
         HookRenderCallback(false);
     }
 
+    // 从音频流读取当前位置并同步到预览时间，供退出预览或暂停前记录位置。
+    private void SyncPreviewTimeFromAudioStream()
+    {
+        if (_audioStream == null) return;
+
+        double audioMs = _audioStream.CurrentTime.TotalMilliseconds;
+        if (double.IsNaN(audioMs) || double.IsInfinity(audioMs) || audioMs < 0) return;
+
+        int ms = Math.Max(0, (int)Math.Round(audioMs));
+        _vm.PreviewTimeMs = ms;
+        PreviewControl.JudgeTimeMs = ms;
+        PreviewControl.JudgeTimeMsPrecise = audioMs;
+    }
+
     private int _syncFrameCounter = 0;
+    private bool _previewAudioClockReady;
+    private long _previewAudioClockRefTick;
+    private double _previewAudioClockRefMs;
+
+    // 重置预览用的音频平滑时钟，下次帧回调会重新对齐真实播放时间。
+    private void ResetPreviewAudioClock()
+    {
+        _previewAudioClockReady = false;
+        _previewAudioClockRefTick = 0;
+        _previewAudioClockRefMs = 0;
+    }
+
+    // 使用“真实音频时间 + 本地时钟外推 + 小幅纠偏”生成更平滑的预览时间。
+    private double GetSmoothedAudioMs(double actualAudioMs)
+    {
+        long nowTick = Stopwatch.GetTimestamp();
+        if (!_previewAudioClockReady)
+        {
+            _previewAudioClockReady = true;
+            _previewAudioClockRefTick = nowTick;
+            _previewAudioClockRefMs = actualAudioMs;
+            return actualAudioMs;
+        }
+
+        double elapsedMs = (nowTick - _previewAudioClockRefTick) * 1000.0 / Stopwatch.Frequency;
+        double predictedMs = _previewAudioClockRefMs + elapsedMs;
+        double errorMs = actualAudioMs - predictedMs;
+
+        // seek、暂停恢复或底层时钟突跳时直接重同步，避免缓慢追赶。
+        if (Math.Abs(errorMs) > 40.0)
+        {
+            _previewAudioClockRefTick = nowTick;
+            _previewAudioClockRefMs = actualAudioMs;
+            return actualAudioMs;
+        }
+
+        // 正常播放时缓慢纠偏，减轻 CurrentTime 按音频块跳变导致的视觉抖动。
+        _previewAudioClockRefMs += errorMs * 0.20;
+        return _previewAudioClockRefMs + (nowTick - _previewAudioClockRefTick) * 1000.0 / Stopwatch.Frequency;
+    }
 
     // 每帧渲染回调：将音频播放位置同步到预览时间轴。
     private void OnRenderingFrame(object? sender, EventArgs e)
     {
         if (!_vm.IsPlaying || _audioStream == null) return;
-        double audioMs = _audioStream.CurrentTime.TotalMilliseconds;
+        double actualAudioMs = _audioStream.CurrentTime.TotalMilliseconds;
+        double audioMs = GetSmoothedAudioMs(actualAudioMs);
         if (audioMs < 0) return;
 
         int ms = (int)Math.Round(audioMs);
-        PreviewControl.JudgeTimeMsPrecise = audioMs;
-        
         if (++_syncFrameCounter >= 6)
         {
             _syncFrameCounter = 0;
             _vm.PreviewTimeMs = ms;
             PreviewControl.JudgeTimeMs = ms;
         }
+
+        // 始终最后写入精确时间，避免整数毫秒同步覆盖渲染快照造成周期性抖动。
+        PreviewControl.JudgeTimeMsPrecise = audioMs;
     }
 
     // 绑定或解绑预览渲染帧回调。

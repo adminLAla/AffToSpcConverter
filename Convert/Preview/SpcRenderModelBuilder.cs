@@ -96,6 +96,11 @@ namespace AffToSpcConverter.Convert.Preview
                 return a.Type.CompareTo(b.Type);
             });
 
+            if (model.Items.Count > 0)
+            {
+                model.MaxItemDurationMs = model.Items.Max(i => Math.Max(0, i.EndTimeMs - i.TimeMs));
+            }
+
             return model;
         }
     }

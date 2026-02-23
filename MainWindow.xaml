@@ -92,6 +92,12 @@
                         </TextBlock>
                     </Button>
                     <Button Width="32" Click="BtnRestart_Click" ToolTip="从头播放">↩</Button>
+                    <Separator Margin="8,0,8,0"/>
+                    <Button Padding="8,2" Margin="0,0,4,0" Click="BtnAddNote_Click">+ 添加</Button>
+                    <Button x:Name="BtnDeleteNoteTop" Padding="8,2" Margin="0,0,4,0" Click="BtnDeleteNote_Click">− 删除</Button>
+                    <Button x:Name="BtnEditNoteTop" Padding="8,2" Margin="0,0,4,0" Click="BtnEditNote_Click">编辑</Button>
+                    <Button x:Name="BtnUndoTop" Padding="8,2" Margin="0,0,4,0" Click="BtnUndoLastOperation_Click">撤回上一次操作</Button>
+                    <Button x:Name="BtnRedoTop" Padding="8,2" Click="BtnRedoLastOperation_Click">恢复上一次操作</Button>
                 </StackPanel>
 
                 <!-- 状态提示 -->
@@ -127,8 +133,13 @@
 
                 <!-- 输出面板 -->
                 <DockPanel Grid.Column="2">
-                    <TextBlock DockPanel.Dock="Top" Text="输出 (.spc)"
-                               FontSize="11" Foreground="#666666" Margin="4,2"/>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,2">
+                        <TextBlock Text="输出 (.spc)"
+                                   FontSize="11" Foreground="#666666"
+                                   VerticalAlignment="Center"/>
+                        <Button Content="可视化预览" Margin="8,0,0,0" Padding="8,1"
+                                FontSize="11" Click="BtnOpenVisualPreview_Click"/>
+                    </StackPanel>
                     <TextBox Text="{Binding SpcPreview}"
                              FontFamily="Consolas" FontSize="12"
                              VerticalScrollBarVisibility="Auto"
@@ -163,7 +174,7 @@
                                        MinWidth="64" Margin="4,0,12,0"/>
 
                             <TextBlock Text="缩放:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <Slider Width="140" Minimum="40" Maximum="1200"
+                            <Slider Width="140" Minimum="500" Maximum="1500"
                                     Value="{Binding PreviewPixelsPerSecond, Mode=TwoWay}"
                                     VerticalAlignment="Center"/>
                             <TextBlock VerticalAlignment="Center" FontFamily="Consolas"
@@ -189,12 +200,6 @@
 
                         <!-- 视图模式切换按钮 -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
-                            <Button Content="+ 添加" Padding="8,3" Margin="0,0,2,0"
-                                    Click="BtnAddNote_Click" FontSize="11"
-                                    ToolTip="在当前时间添加音符"/>
-                            <Button Content="− 删除" Padding="8,3" Margin="0,0,8,0"
-                                    Click="BtnDeleteNote_Click" FontSize="11"
-                                    ToolTip="删除当前选中的音符"/>
                             <Button Content="退出预览" Padding="8,3" Margin="0,0,8,0"
                                     Click="BtnExitPreview_Click" FontSize="11"/>
                             <Button x:Name="BtnMergedView" Content="合并视图" Padding="8,3"
@@ -262,6 +267,7 @@
                         PixelsPerSecond="{Binding PreviewPixelsPerSecond, Mode=TwoWay}"
                         Speed="{Binding PreviewSpeed}"
                         TargetFps="{Binding PreviewTargetFps}"
+                        UseVsync="{Binding PreviewUseVsync}"
                         ShowFpsStats="{Binding ShowFpsStats}"/>
                 </Grid>
             </Grid>

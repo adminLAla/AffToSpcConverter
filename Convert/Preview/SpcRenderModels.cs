@@ -36,5 +36,6 @@ namespace AffToSpcConverter.Convert.Preview
         public double Beats { get; set; }
         public List<RenderItem> Items { get; } = new();
         public List<(int timeMs, double bpm, double beats)> BpmChanges { get; } = new();
+        public int MaxItemDurationMs { get; set; }
     }
 }

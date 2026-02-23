@@ -7,6 +7,9 @@ namespace AffToSpcConverter.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged
 {
+    private const double PreviewMinPixelsPerSecond = 500.0;
+    private const double PreviewMaxPixelsPerSecond = 1500.0;
+
     private string _status = "Ready.";
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
@@ -163,8 +166,9 @@ public class MainViewModel : INotifyPropertyChanged
         get => _previewPixelsPerSecond;
         set
         {
-            if (System.Math.Abs(_previewPixelsPerSecond - value) < 0.0001) return;
-            _previewPixelsPerSecond = value;
+            double next = System.Math.Clamp(value, PreviewMinPixelsPerSecond, PreviewMaxPixelsPerSecond);
+            if (System.Math.Abs(_previewPixelsPerSecond - next) < 0.0001) return;
+            _previewPixelsPerSecond = next;
             OnPropertyChanged();
             OnPropertyChanged(nameof(PreviewPixelsPerSecondEffective));
         }
@@ -223,6 +227,43 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (_showFpsStats == value) return;
             _showFpsStats = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _disableNoteSelectionWhilePlaying;
+    public bool DisableNoteSelectionWhilePlaying
+    {
+        get => _disableNoteSelectionWhilePlaying;
+        set
+        {
+            if (_disableNoteSelectionWhilePlaying == value) return;
+            _disableNoteSelectionWhilePlaying = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private string _previewNoteEditTriggerMode = "single";
+    public string PreviewNoteEditTriggerMode
+    {
+        get => _previewNoteEditTriggerMode;
+        set
+        {
+            var next = value == "double" ? "double" : "single";
+            if (_previewNoteEditTriggerMode == next) return;
+            _previewNoteEditTriggerMode = next;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _previewUseVsync = true;
+    public bool PreviewUseVsync
+    {
+        get => _previewUseVsync;
+        set
+        {
+            if (_previewUseVsync == value) return;
+            _previewUseVsync = value;
             OnPropertyChanged();
         }
     }
