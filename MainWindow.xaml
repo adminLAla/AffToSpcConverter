@@ -15,8 +15,7 @@
                 <MenuItem Header="退出(_X)" Click="MenuExit_Click"/>
             </MenuItem>
             <MenuItem Header="打包(_P)">
-                <MenuItem Header="打包加密资源..." Click="MenuPackage_Click"/>
-                <MenuItem Header="打包未加密资源..." Click="MenuPackageBundleTexture_Click"/>
+                <MenuItem Header="打包谱面..." Click="MenuPackageBundleTexture_Click"/>
             </MenuItem>
             <MenuItem Header="选项(_O)">
                 <MenuItem Header="推荐键位映射 (4轨→5轨)"

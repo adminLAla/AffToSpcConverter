@@ -54,6 +54,27 @@ public class GameAssetPacker
         File.WriteAllBytes(outputFilePath, encryptedBytes);
     }
 
+    // 读取源文件并执行与打包一致的预处理（例如 .txt 去除 UTF-8 BOM），供新歌曲资源打包复用。
+    public static byte[] ReadSourceBytesForPacking(string sourceFilePath)
+    {
+        if (!File.Exists(sourceFilePath))
+            throw new FileNotFoundException($"Source file not found: {sourceFilePath}");
+
+        byte[] sourceBytes = File.ReadAllBytes(sourceFilePath);
+        string ext = Path.GetExtension(sourceFilePath).ToLowerInvariant();
+        if (ext == ".txt" && sourceBytes.Length >= 3 && sourceBytes[0] == 0xEF && sourceBytes[1] == 0xBB && sourceBytes[2] == 0xBF)
+            return sourceBytes.Skip(3).ToArray();
+
+        return sourceBytes;
+    }
+
+    // 使用与游戏一致的 XTS 流程加密原始字节数组。
+    public static byte[] EncryptBytesForGame(byte[] plainBytes)
+    {
+        if (plainBytes == null) throw new ArgumentNullException(nameof(plainBytes));
+        return XtsEncrypt(plainBytes);
+    }
+
     // 读取映射表中的 FullLookupPath 列表，并按源文件类型过滤可替换目标。
     public static IReadOnlyList<string> GetReplacementCandidates(string mappingJsonPath, string? sourceFilePath)
     {
