@@ -108,8 +108,7 @@ public static class PatternUtils
                     if ((alt++ % 2) == 1) lane = (lane == 0) ? 5 : 0;
                 }
 
-                // 原：new SpcTap(list[i].TimeMs, lane, 1) -> (time, lane, kind/width)
-                // 现：new SpcTap(list[i].TimeMs, 1, lane) -> (time, kind, lane)
+                // new SpcTap(list[i].TimeMs, 1, lane) -> (time, kind, lane)
                 groundTaps.Add(new SpcTap(list[i].TimeMs, 1, lane));
             }
         }

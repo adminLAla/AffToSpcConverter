@@ -15,6 +15,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -48,6 +49,21 @@ public partial class MainWindow : Window
     private readonly Stack<List<ISpcEvent>> _undoEventHistory = new();
     // 预览编辑历史：恢复栈（存放被撤回的快照）。
     private readonly Stack<List<ISpcEvent>> _redoEventHistory = new();
+    // 当前谱面在本轮加载后是否尚未首次进入可视化预览（首次进入时强制从 0ms 开始）。
+    private bool _pendingFirstPreviewEntryReset = true;
+    // 文本区副本在进入可视化预览前是否需要重新解析为事件列表。
+    private bool _spcTextNeedsPreviewSync;
+
+    private static readonly Regex RxValidationLineNo = new(@"第\s*(\d+)\s*行", RegexOptions.Compiled);
+    private int _affLineNumberRenderedCount = -1;
+    private int _spcLineNumberRenderedCount = -1;
+
+    private sealed class ValidationIssueListItem
+    {
+        public required string Text { get; init; }
+        public int? LineNumber { get; init; }
+        public override string ToString() => Text;
+    }
 
     // 初始化主窗口并绑定预览事件。
     public MainWindow()
@@ -59,6 +75,10 @@ public partial class MainWindow : Window
         PreviewControl.NoteSelected += OnNoteSelected;
         PreviewControl.NoteClicked += OnPreviewNoteClicked;
         PreviewControl.NotePlacementCommitted += OnNotePlacementCommitted;
+        AffInputTextBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(AffInputTextBox_ScrollChanged));
+        SpcOutputTextBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(SpcOutputTextBox_ScrollChanged));
+        UpdateTextBoxLineNumbers(AffInputTextBox, AffInputLineNumbersTextBox, ref _affLineNumberRenderedCount);
+        UpdateTextBoxLineNumbers(SpcOutputTextBox, SpcOutputLineNumbersTextBox, ref _spcLineNumberRenderedCount);
         RefreshPreviewEditButtonStates();
     }
 
@@ -70,6 +90,102 @@ public partial class MainWindow : Window
         BtnEditNoteTop.IsEnabled = hasSelectedEditableNote;
         BtnUndoTop.IsEnabled = _undoEventHistory.Count > 0;
         BtnRedoTop.IsEnabled = _redoEventHistory.Count > 0;
+
+        BtnEditNoteText.IsEnabled = HasWorkingSpcText();
+        var spcTextBox = SpcOutputTextBox;
+        bool textEditable = spcTextBox != null && !spcTextBox.IsReadOnly;
+        BtnUndoText.IsEnabled = textEditable && (spcTextBox?.CanUndo == true);
+        BtnRedoText.IsEnabled = textEditable && (spcTextBox?.CanRedo == true);
+        BtnSaveSpcText.IsEnabled = HasWorkingSpcText();
+
+        bool isTextEditing = textEditable && MenuVisualPreview.IsChecked != true;
+        BtnEditNoteText.Content = isTextEditing ? "结束编辑" : "编辑";
+        if (isTextEditing)
+        {
+            BtnEditNoteText.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0x7D, 0x32));
+            BtnEditNoteText.Foreground = Brushes.White;
+            BtnEditNoteText.FontWeight = FontWeights.Bold;
+        }
+        else
+        {
+            BtnEditNoteText.ClearValue(Button.BackgroundProperty);
+            BtnEditNoteText.ClearValue(Button.ForegroundProperty);
+            BtnEditNoteText.ClearValue(Button.FontWeightProperty);
+        }
+    }
+
+    // 获取当前输出区的 SPC 工作副本文本（文本框优先）。
+    private string GetWorkingSpcText()
+        => SpcOutputTextBox?.Text ?? _vm.SpcPreview ?? _vm.GeneratedSpcText ?? string.Empty;
+
+    // 当前是否存在可供编辑/校验/导出的 SPC 工作副本。
+    private bool HasWorkingSpcText()
+        => !string.IsNullOrWhiteSpace(GetWorkingSpcText());
+
+    // 文本变化时按当前行数生成左侧行号文本。
+    private static void UpdateTextBoxLineNumbers(TextBox sourceTextBox, TextBox lineNumberTextBox, ref int cacheLineCount)
+    {
+        if (sourceTextBox == null || lineNumberTextBox == null) return;
+
+        int lineCount = sourceTextBox.LineCount;
+        if (lineCount <= 0)
+        {
+            var text = sourceTextBox.Text ?? string.Empty;
+            lineCount = string.IsNullOrEmpty(text) ? 1 : text.Count(ch => ch == '\n') + 1;
+        }
+
+        lineCount = Math.Max(1, lineCount);
+        if (cacheLineCount == lineCount)
+            return;
+
+        var sb = new StringBuilder(lineCount * 4);
+        for (int i = 1; i <= lineCount; i++)
+        {
+            if (i > 1) sb.Append('\n');
+            sb.Append(i);
+        }
+
+        lineNumberTextBox.Text = sb.ToString();
+        cacheLineCount = lineCount;
+    }
+
+    // 从 TextBox 视觉树中查找内置 ScrollViewer，用于同步行号列滚动位置。
+    private static ScrollViewer? FindTextBoxScrollViewer(DependencyObject? root)
+    {
+        if (root == null) return null;
+        if (root is ScrollViewer sv) return sv;
+
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            var found = FindTextBoxScrollViewer(child);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    // 将行号列滚动位置同步到文本框当前的垂直偏移。
+    private static void SyncLineNumberScrollOffset(TextBox lineNumberTextBox, double verticalOffset)
+    {
+        var sv = FindTextBoxScrollViewer(lineNumberTextBox);
+        sv?.ScrollToVerticalOffset(verticalOffset);
+    }
+
+    // 当前编辑撤销历史上限（同时用于文本撤销栈与预览撤销栈）。
+    private int EditHistoryLimit => Math.Clamp(_vm.TextEditUndoLimit, 1, 5000);
+
+    // 向预览撤销/恢复栈压入快照，并按设置裁剪最大深度（保留最新记录）。
+    private void PushPreviewHistorySnapshot(Stack<List<ISpcEvent>> stack, IReadOnlyList<ISpcEvent> events)
+    {
+        stack.Push(new List<ISpcEvent>(events));
+        if (stack.Count <= EditHistoryLimit) return;
+
+        var keepTopToBottom = stack.Take(EditHistoryLimit).ToList();
+        stack.Clear();
+        for (int i = keepTopToBottom.Count - 1; i >= 0; i--)
+            stack.Push(keepTopToBottom[i]);
     }
 
     // 响应主界面设置变化（例如播放速度倍率）并同步到音频输出链。
@@ -81,12 +197,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.PropertyName == nameof(MainViewModel.TextEditUndoLimit))
+        {
+            RefreshPreviewEditButtonStates();
+            return;
+        }
+
         // 预览数据被清空时自动退出可视化预览，避免界面停留在空白预览层。
         if (e.PropertyName == nameof(MainViewModel.PreviewEvents) &&
             !_vm.CanVisualPreview &&
             MenuVisualPreview.IsChecked == true)
         {
             MenuVisualPreview.IsChecked = false;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.PreviewEvents) && !_vm.CanVisualPreview)
+        {
+            _pendingFirstPreviewEntryReset = true;
+            RefreshPreviewEditButtonStates();
         }
     }
 
@@ -125,6 +253,8 @@ public partial class MainWindow : Window
             _vm.GeneratedSpcText = spcText;
             _vm.SpcPreview = spcText;
             _vm.PreviewEvents = events;
+            SpcOutputTextBox.IsReadOnly = true;
+            _spcTextNeedsPreviewSync = false;
             ResetPreviewEditHistory();
 
             // 计算事件的结束时间（用于预览时间范围）。
@@ -140,6 +270,10 @@ public partial class MainWindow : Window
                 .Where(x => x is not SpcChart)
                 .Select(x => x.TimeMs)
                 .DefaultIfEmpty(0).Min());
+            _pendingFirstPreviewEntryReset = true;
+            PreviewControl.JudgeTimeMs = _vm.PreviewTimeMs;
+            PreviewControl.JudgeTimeMsPrecise = _vm.PreviewTimeMs;
+            RefreshPreviewEditButtonStates();
 
             _vm.Status = $"已加载 SPC：{Path.GetFileName(dlg.FileName)}（共 {events.Count} 个事件）";
         }
@@ -218,12 +352,18 @@ public partial class MainWindow : Window
                 .Where(x => x is not SpcChart)
                 .Select(x => x.TimeMs)
                 .DefaultIfEmpty(0).Min());
+            _pendingFirstPreviewEntryReset = true;
+            PreviewControl.JudgeTimeMs = _vm.PreviewTimeMs;
+            PreviewControl.JudgeTimeMsPrecise = _vm.PreviewTimeMs;
 
             ValidationUtil.Validate(result.Events, opt, result.Warnings);
 
             var spcText = SpcWriter.Write(result.Events);
             _vm.GeneratedSpcText = spcText;
             _vm.SpcPreview = spcText;
+            SpcOutputTextBox.IsReadOnly = true;
+            _spcTextNeedsPreviewSync = false;
+            RefreshPreviewEditButtonStates();
 
             _vm.Status = $"转换成功：tap={result.Events.Count(x => x.Type == SpcEventType.Tap)}, " +
                          $"hold={result.Events.Count(x => x.Type == SpcEventType.Hold)}, " +
@@ -241,14 +381,11 @@ public partial class MainWindow : Window
         }
     }
 
-    // 将当前生成的 SPC 文本保存到文件。
+    // 将当前 SPC 工作副本导出到文件（另存为，不覆盖原文件）。
     private void BtnSaveSpc_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrEmpty(_vm.GeneratedSpcText))
-        {
-            MessageBox.Show("无内容可保存，请先进行转换。");
-            return;
-        }
+        if (!TryValidateCurrentSpcBeforeSave(out var validation)) return;
+        if (!ConfirmWarningsBeforeSave(validation)) return;
 
         var dlg = new SaveFileDialog
         {
@@ -257,9 +394,36 @@ public partial class MainWindow : Window
             FileName = "output.spc"
         };
         if (dlg.ShowDialog() != true) return;
+        SaveCurrentSpcToPath(dlg.FileName);
+    }
 
-        File.WriteAllText(dlg.FileName, _vm.GeneratedSpcText, new UTF8Encoding(false));
-        _vm.Status = $"已保存：{Path.GetFileName(dlg.FileName)}";
+    // 输出区“合法性检验”按钮：仅检查文本副本是否合法，不写入文件。
+    private void BtnValidateSpcText_Click(object sender, RoutedEventArgs e)
+    {
+        var spcText = GetWorkingSpcText();
+        if (string.IsNullOrWhiteSpace(spcText))
+        {
+            MessageBox.Show("无内容可检验，请先打开或生成 SPC。");
+            return;
+        }
+
+        var validation = ValidationUtil.ValidateForSave(spcText);
+        if (validation.Errors.Count > 0)
+        {
+            _vm.Status = $"非法校验失败：{validation.Errors.Count} 条错误，{validation.Warnings.Count} 条警告。";
+            ShowValidationIssuesLocatorWindow(validation.Errors, "SPC合法性校验失败", "Error");
+            return;
+        }
+
+        if (validation.Warnings.Count > 0)
+        {
+            _vm.Status = $"非法校验通过（无 Error），但有 {validation.Warnings.Count} 条警告。";
+            ShowValidationIssuesLocatorWindow(validation.Warnings, "SPC 合法性校验警告", "Warning");
+            return;
+        }
+
+        _vm.Status = "SPC 合法性检验通过（0 错误，0 警告）。";
+        MessageBox.Show("SPC 合法性检验通过。", "合法性检验");
     }
 
     // 打开设置窗口。
@@ -272,12 +436,13 @@ public partial class MainWindow : Window
     // 生成并显示当前 SPC 的简要报告。
     private void MenuReport_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrEmpty(_vm.GeneratedSpcText))
+        var spcText = GetWorkingSpcText();
+        if (string.IsNullOrWhiteSpace(spcText))
         {
             MessageBox.Show("请先完成转换，再生成报告。");
             return;
         }
-        MessageBox.Show(ReportUtil.BuildSimpleReport(_vm.GeneratedSpcText, _vm), "报告");
+        MessageBox.Show(ReportUtil.BuildSimpleReport(spcText, _vm), "报告");
     }
 
     // 打开资源打包窗口。
@@ -301,15 +466,283 @@ public partial class MainWindow : Window
     // 关闭主窗口。
     private void MenuExit_Click(object sender, RoutedEventArgs e) => Close();
 
+    // 导出前执行非法校验；若存在 Error，则弹出可定位列表并阻止导出。
+    private bool TryValidateCurrentSpcBeforeSave(out SpcValidationReport validation)
+    {
+        validation = new SpcValidationReport();
+        var spcText = GetWorkingSpcText();
+        if (string.IsNullOrWhiteSpace(spcText))
+        {
+            MessageBox.Show("无内容可导出，请先打开或生成 SPC。");
+            return false;
+        }
+
+        validation = ValidationUtil.ValidateForSave(spcText);
+        if (validation.Errors.Count == 0)
+            return true;
+
+        _vm.Status = $"导出失败：存在 {validation.Errors.Count} 条严重错误。";
+        ShowValidationIssuesLocatorWindow(validation.Errors, "SPC合法性校验失败", "Error");
+        return false;
+    }
+
+    // 保存前显示 Warning 提示，允许用户选择继续或取消。
+    private bool ConfirmWarningsBeforeSave(SpcValidationReport validation)
+    {
+        if (validation.Warnings.Count == 0) return true;
+
+        string warnMsg = $"检测到 {validation.Warnings.Count} 条警告（不会阻止导出）。\n是否继续保存？\n\n"
+                       + string.Join("\n", validation.Warnings.Take(20));
+        if (validation.Warnings.Count > 20)
+            warnMsg += $"\n... 其余 {validation.Warnings.Count - 20} 条警告未显示";
+
+        if (MessageBox.Show(warnMsg, "SPC 警告", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+            return true;
+
+        _vm.Status = "已取消导出。";
+        return false;
+    }
+
+    // 将当前 SPC 工作副本写入指定路径。
+    private void SaveCurrentSpcToPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("保存路径不能为空。", nameof(path));
+
+        var spcText = GetWorkingSpcText();
+        File.WriteAllText(path, spcText, new UTF8Encoding(false));
+        _vm.GeneratedSpcText = spcText;
+        _vm.SpcPreview = spcText;
+        _vm.Status = $"已导出：{Path.GetFileName(path)}";
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 弹出可点击的合法性校验信息列表；点击条目时自动定位到输出 SPC 对应行。
+    private void ShowValidationIssuesLocatorWindow(IReadOnlyList<string> issues, string title, string level)
+    {
+        var items = issues.Select(x => new ValidationIssueListItem
+        {
+            Text = $"[{level}]: {x}",
+            LineNumber = TryExtractValidationIssueLineNumber(x)
+        }).ToList();
+
+        var list = new ListBox
+        {
+            ItemsSource = items,
+            Margin = new Thickness(12, 8, 12, 0),
+            MinWidth = 560,
+            MinHeight = 260
+        };
+
+        list.SelectionChanged += (_, __) =>
+        {
+            if (list.SelectedItem is not ValidationIssueListItem item) return;
+            if (item.LineNumber is int lineNo)
+                NavigateToSpcOutputLine(lineNo);
+        };
+
+        var tip = new TextBlock
+        {
+            Text = "点击带“第 X 行”的错误可自动定位到输出 .spc 对应行。",
+            Margin = new Thickness(12, 10, 12, 6),
+            Foreground = Brushes.DimGray,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        var closeBtn = new Button
+        {
+            Content = "关闭",
+            Width = 100,
+            IsCancel = true,
+            Margin = new Thickness(0, 0, 12, 12)
+        };
+
+        var btnPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        btnPanel.Children.Add(closeBtn);
+
+        var root = new DockPanel();
+        DockPanel.SetDock(tip, Dock.Top);
+        root.Children.Add(tip);
+        DockPanel.SetDock(btnPanel, Dock.Bottom);
+        root.Children.Add(btnPanel);
+        root.Children.Add(list);
+
+        var win = new Window
+        {
+            Owner = this,
+            Title = title,
+            Width = 660,
+            Height = 400,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = root
+        };
+
+        closeBtn.Click += (_, __) => win.Close();
+        win.ShowDialog();
+    }
+
+    // 从“第 X 行 ...”格式的校验信息中提取行号；提取失败返回 null。
+    private static int? TryExtractValidationIssueLineNumber(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var m = RxValidationLineNo.Match(text);
+        if (!m.Success) return null;
+        return int.TryParse(m.Groups[1].Value, out int lineNo) && lineNo > 0 ? lineNo : null;
+    }
+
+    // 定位到输出 SPC 文本框的指定行，并自动切回文本视图。
+    private void NavigateToSpcOutputLine(int lineNo)
+    {
+        if (lineNo <= 0) return;
+        if (MenuVisualPreview.IsChecked == true)
+        {
+            MenuVisualPreview.IsChecked = false;
+            OnPreviewToggled(this, new RoutedEventArgs());
+        }
+
+        if (SpcOutputTextBox.LineCount <= 0)
+            return;
+
+        int lineIndex = Math.Clamp(lineNo - 1, 0, Math.Max(0, SpcOutputTextBox.LineCount - 1));
+        SpcOutputTextBox.Focus();
+        SpcOutputTextBox.ScrollToLine(lineIndex);
+
+        int charIndex = SpcOutputTextBox.GetCharacterIndexFromLineIndex(lineIndex);
+        if (charIndex >= 0)
+        {
+            int len = SpcOutputTextBox.GetLineLength(lineIndex);
+            SpcOutputTextBox.Select(charIndex, Math.Max(0, len));
+        }
+
+        _vm.Status = $"已定位到输出 SPC 第 {lineNo} 行。";
+    }
+
+    // 文本区内容变化时，将修改视为对 SPC 工作副本的暂存编辑。
+    private void SpcOutputTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SpcOutputTextBox == null) return;
+        UpdateTextBoxLineNumbers(SpcOutputTextBox, SpcOutputLineNumbersTextBox, ref _spcLineNumberRenderedCount);
+        RefreshPreviewEditButtonStates();
+        if (SpcOutputTextBox.IsReadOnly) return;
+
+        _spcTextNeedsPreviewSync = true;
+        _vm.GeneratedSpcText = SpcOutputTextBox.Text;
+    }
+
+    // 输入区文本变化时刷新左侧行号（主要用于加载 .aff 后显示定位参考）。
+    private void AffInputTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateTextBoxLineNumbers(AffInputTextBox, AffInputLineNumbersTextBox, ref _affLineNumberRenderedCount);
+    }
+
+    // 输入区滚动时同步行号列垂直滚动。
+    private void AffInputTextBox_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.VerticalChange == 0 && e.ExtentHeightChange == 0) return;
+        SyncLineNumberScrollOffset(AffInputLineNumbersTextBox, e.VerticalOffset);
+    }
+
+    // 输出区滚动时同步行号列垂直滚动。
+    private void SpcOutputTextBox_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.VerticalChange == 0 && e.ExtentHeightChange == 0) return;
+        SyncLineNumberScrollOffset(SpcOutputLineNumbersTextBox, e.VerticalOffset);
+    }
+
+    // 将文本区的 SPC 工作副本重新解析为预览事件（用于进入可视化预览前同步）。
+    private bool TrySyncPreviewEventsFromWorkingText()
+    {
+        var spcText = GetWorkingSpcText();
+        if (string.IsNullOrWhiteSpace(spcText))
+        {
+            MessageBox.Show("无可预览的 SPC 文本，请先打开或生成谱面。");
+            return false;
+        }
+
+        try
+        {
+            var events = SpcParser.Parse(spcText);
+
+            static int EndTime(ISpcEvent ev) => ev switch
+            {
+                SpcHold h => h.TimeMs + h.DurationMs,
+                SpcSkyArea s => s.TimeMs + s.DurationMs,
+                _ => ev.TimeMs
+            };
+
+            _vm.PreviewEvents = events;
+            _vm.PreviewMaxTimeMs = Math.Max(5000, events.Count > 0 ? events.Max(EndTime) : 5000);
+            _vm.PreviewTimeMs = Math.Clamp(_vm.PreviewTimeMs, 0, _vm.PreviewMaxTimeMs);
+            _vm.GeneratedSpcText = spcText;
+            _vm.SpcPreview = spcText;
+
+            ResetPreviewEditHistory();
+            PreviewControl.RefreshModel();
+
+            _spcTextNeedsPreviewSync = false;
+            SpcOutputTextBox.IsReadOnly = true;
+            _vm.Status = $"已从文本副本重新解析 SPC（共 {events.Count} 个事件）。";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _vm.Status = "文本副本解析失败，无法进入可视化预览。";
+            MessageBox.Show(ex.Message, "SPC 文本解析失败");
+            return false;
+        }
+    }
+
+    // 将当前预览事件列表写回到文本副本，确保切回首页时文本内容与预览编辑结果一致。
+    private void SyncWorkingSpcTextFromPreviewEvents()
+    {
+        if (_vm.PreviewEvents == null) return;
+
+        var spcText = IO.SpcWriter.Write(_vm.PreviewEvents);
+        _vm.GeneratedSpcText = spcText;
+        _vm.SpcPreview = spcText;
+        _spcTextNeedsPreviewSync = false;
+    }
+
     // 切换文本视图与可视化预览模式，并同步工具栏显示。
     private void OnPreviewToggled(object sender, RoutedEventArgs e)
     {
         bool show = MenuVisualPreview.IsChecked == true;
 
+        if (show && (_spcTextNeedsPreviewSync || !SpcOutputTextBox.IsReadOnly))
+        {
+            if (!TrySyncPreviewEventsFromWorkingText())
+            {
+                MenuVisualPreview.IsChecked = false;
+                return;
+            }
+        }
+
+        if (show && _pendingFirstPreviewEntryReset)
+        {
+            _vm.PreviewTimeMs = 0;
+            PreviewControl.JudgeTimeMs = 0;
+            PreviewControl.JudgeTimeMsPrecise = 0;
+            if (_audioStream?.CanSeek == true && !_vm.IsPlaying)
+                SetAudioCurrentTimeSafe(TimeSpan.Zero);
+            ResetPreviewAudioClock();
+            _pendingFirstPreviewEntryReset = false;
+        }
+
         if (!show && _vm.IsPlaying)
         {
             SyncPreviewTimeFromAudioStream();
             PausePlayback();
+        }
+
+        if (!show)
+        {
+            SyncWorkingSpcTextFromPreviewEvents();
+            if (SpcOutputTextBox != null)
+                SpcOutputTextBox.IsReadOnly = true;
         }
 
         // 切换内容层
@@ -319,15 +752,92 @@ public partial class MainWindow : Window
         // 切换工具栏：预览模式用背景音乐工具栏，普通模式用文件工具栏
         ToolbarText.Visibility    = show ? Visibility.Collapsed : Visibility.Visible;
         ToolbarPreview.Visibility = show ? Visibility.Visible   : Visibility.Collapsed;
+        RefreshPreviewEditButtonStates();
     }
 
     // 从主界面输出区快速进入可视化预览。
     private void BtnOpenVisualPreview_Click(object sender, RoutedEventArgs e)
     {
-        if (!_vm.CanVisualPreview) return;
+        if (!HasWorkingSpcText()) return;
         if (MenuVisualPreview.IsChecked == true) return;
         MenuVisualPreview.IsChecked = true;
         OnPreviewToggled(sender, e);
+    }
+
+    // 输出区“编辑/结束编辑”按钮：切换文本区编辑模式，对 SPC 工作副本进行文本增改。
+    private void BtnEditFromTextPanel_Click(object sender, RoutedEventArgs e)
+    {
+        if (!HasWorkingSpcText())
+        {
+            MessageBox.Show("请先加载或生成 SPC 谱面。");
+            return;
+        }
+
+        if (MenuVisualPreview.IsChecked == true)
+        {
+            MenuVisualPreview.IsChecked = false;
+            OnPreviewToggled(sender, e);
+        }
+
+        if (!SpcOutputTextBox.IsReadOnly)
+        {
+            SpcOutputTextBox.IsReadOnly = true;
+            _vm.Status = "已结束文本编辑模式（修改仍暂存在副本中）。";
+            RefreshPreviewEditButtonStates();
+            return;
+        }
+
+        SpcOutputTextBox.IsReadOnly = false;
+        SpcOutputTextBox.Focus();
+        SpcOutputTextBox.CaretIndex = 0;
+        SpcOutputTextBox.Select(0, 0);
+        SpcOutputTextBox.ScrollToHome();
+        _vm.Status = "已开启文本编辑模式：修改仅暂存在副本中，导出 .spc 时才会写入文件。";
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 首页文本区撤销：使用 TextBox 内建撤销栈（与可视化预览撤销栈独立）。
+    private void BtnUndoTextEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (SpcOutputTextBox.IsReadOnly)
+        {
+            _vm.Status = "请先点击“编辑”进入文本编辑模式。";
+            return;
+        }
+
+        if (!SpcOutputTextBox.CanUndo)
+        {
+            _vm.Status = "文本区没有可撤销的修改。";
+            return;
+        }
+
+        SpcOutputTextBox.Undo();
+        _spcTextNeedsPreviewSync = true;
+        _vm.GeneratedSpcText = SpcOutputTextBox.Text;
+        _vm.Status = "已撤销文本区上一次修改。";
+        RefreshPreviewEditButtonStates();
+    }
+
+    // 首页文本区恢复：使用 TextBox 内建恢复栈（与可视化预览恢复栈独立）。
+    private void BtnRedoTextEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (SpcOutputTextBox.IsReadOnly)
+        {
+            _vm.Status = "请先点击“编辑”进入文本编辑模式。";
+            return;
+        }
+
+        if (!SpcOutputTextBox.CanRedo)
+        {
+            _vm.Status = "文本区没有可恢复的修改。";
+            return;
+        }
+
+        SpcOutputTextBox.Redo();
+        _spcTextNeedsPreviewSync = true;
+        _vm.GeneratedSpcText = SpcOutputTextBox.Text;
+        _vm.Status = "已恢复文本区上一次修改。";
+        RefreshPreviewEditButtonStates();
     }
 
     // ===== 音符增删 =====
@@ -447,6 +957,8 @@ public partial class MainWindow : Window
         var spcText = IO.SpcWriter.Write(events);
         _vm.GeneratedSpcText = spcText;
         _vm.SpcPreview = spcText;
+        SpcOutputTextBox.IsReadOnly = true;
+        _spcTextNeedsPreviewSync = false;
         PreviewControl.RefreshModel();
         RefreshPreviewEditButtonStates();
     }
@@ -463,7 +975,7 @@ public partial class MainWindow : Window
     private void PushUndoSnapshotForPreviewEdit()
     {
         if (_vm.PreviewEvents == null) return;
-        _undoEventHistory.Push(new List<ISpcEvent>(_vm.PreviewEvents));
+        PushPreviewHistorySnapshot(_undoEventHistory, _vm.PreviewEvents);
         _redoEventHistory.Clear();
         RefreshPreviewEditButtonStates();
     }
@@ -523,7 +1035,7 @@ public partial class MainWindow : Window
         }
 
         if (_vm.PreviewEvents != null)
-            _redoEventHistory.Push(new List<ISpcEvent>(_vm.PreviewEvents));
+            PushPreviewHistorySnapshot(_redoEventHistory, _vm.PreviewEvents);
 
         var snapshot = _undoEventHistory.Pop();
         HidePropPanel();
@@ -541,7 +1053,7 @@ public partial class MainWindow : Window
         }
 
         if (_vm.PreviewEvents != null)
-            _undoEventHistory.Push(new List<ISpcEvent>(_vm.PreviewEvents));
+            PushPreviewHistorySnapshot(_undoEventHistory, _vm.PreviewEvents);
 
         var snapshot = _redoEventHistory.Pop();
         HidePropPanel();

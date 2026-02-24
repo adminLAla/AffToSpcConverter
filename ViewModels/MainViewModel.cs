@@ -113,6 +113,19 @@ public class MainViewModel : INotifyPropertyChanged
     private string _sortMode = "timeFirst";
     public string SortMode { get => _sortMode; set { _sortMode = value; OnPropertyChanged(); } }
 
+    private int _textEditUndoLimit = 200;
+    public int TextEditUndoLimit
+    {
+        get => _textEditUndoLimit;
+        set
+        {
+            int clamped = Math.Clamp(value, 1, 5000);
+            if (_textEditUndoLimit == clamped) return;
+            _textEditUndoLimit = clamped;
+            OnPropertyChanged();
+        }
+    }
+
     // ---- 预览 ----
     private string _affPreview = "";
     public string AffPreview { get => _affPreview; set { _affPreview = value; OnPropertyChanged(); } }

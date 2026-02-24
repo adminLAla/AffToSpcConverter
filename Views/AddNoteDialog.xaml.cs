@@ -16,7 +16,7 @@ public partial class AddNoteDialog : Window
     public int RightEase { get; private set; }
     public int GroupId { get; private set; } = 1;
 
-    // 添加相关内容或字段。
+    // 初始化添加音符对话框并填充类型与默认分母。
     public AddNoteDialog(string[] typeNames, int defaultDen)
     {
         InitializeComponent();
@@ -51,18 +51,18 @@ public partial class AddNoteDialog : Window
         switch (SelectedType)
         {
             case "Tap":
-                if (!int.TryParse(TbKind.Text, out int tk)) { MessageBox.Show("Kind ֵ��Ч��"); return; }
+                if (!int.TryParse(TbKind.Text, out int tk)) { MessageBox.Show("Kind / Width 值无效。"); return; }
                 Kind = Math.Clamp(tk, 1, 4);
                 break;
 
             case "Hold":
-                if (!int.TryParse(TbKind.Text, out int hk)) { MessageBox.Show("Width ֵ��Ч��"); return; }
+                if (!int.TryParse(TbKind.Text, out int hk)) { MessageBox.Show("Kind / Width 值无效。"); return; }
                 Kind = Math.Clamp(hk, 1, 6);
                 break;
 
             case "Flick":
-                if (!int.TryParse(TbDen.Text, out int fd)) { MessageBox.Show("Den ֵ��Ч��"); return; }
-                if (!int.TryParse(TbWidthNum.Text, out int fw)) { MessageBox.Show("WidthNum ֵ��Ч��"); return; }
+                if (!int.TryParse(TbDen.Text, out int fd)) { MessageBox.Show("Den 值无效。"); return; }
+                if (!int.TryParse(TbWidthNum.Text, out int fw)) { MessageBox.Show("WidthNum 值无效。"); return; }
                 Den = Math.Max(1, fd);
                 WidthNum = Math.Max(1, fw);
                 WidthNum2 = WidthNum;
@@ -71,8 +71,8 @@ public partial class AddNoteDialog : Window
                 break;
 
             case "SkyArea":
-                if (!int.TryParse(TbDen.Text, out int sd)) { MessageBox.Show("Den ֵ��Ч��"); return; }
-                if (!int.TryParse(TbWidthNum.Text, out int sw)) { MessageBox.Show("WidthNum ֵ��Ч��"); return; }
+                if (!int.TryParse(TbDen.Text, out int sd)) { MessageBox.Show("Den 值无效。"); return; }
+                if (!int.TryParse(TbWidthNum.Text, out int sw)) { MessageBox.Show("WidthNum 值无效。"); return; }
                 Den = Math.Max(1, sd);
                 WidthNum = Math.Max(0, sw);
                 WidthNum2 = WidthNum;

@@ -22,6 +22,7 @@ public class GameAssetPacker
             throw new FileNotFoundException($"Source file not found: {sourceFilePath}");
         if (!File.Exists(mappingJsonPath))
             throw new FileNotFoundException($"Mapping JSON not found: {mappingJsonPath}");
+        ValidateSupportedSourceFileType(sourceFilePath);
         ValidateReplacementType(sourceFilePath, originalGamePath);
 
         // 2. 解析映射 JSON。
@@ -46,35 +47,10 @@ public class GameAssetPacker
             sourceBytes = sourceBytes.Skip(3).ToArray();
         }
 
-        // 6. 补齐策略：按 16 字节分组对齐，并在末尾追加递增填充字节。
-        // 游戏解析器可能会读取到文件尾后方，因此这里保留额外填充空间。
-        // 采用“总是补齐”策略：即使已对齐，也补一个完整 16 字节块。
-        // 行为类似 PKCS7，但填充值改为 00、01、02... 的递增序列。
-        // 若文件长度刚好是 16 的倍数，paddingNeeded 仍会取 16。
-        // 若未对齐，则补到下一个 16 字节边界。
-        // 递增填充字节便于后续调试与验证。
-        // 该策略用于兼容目标游戏在边界情况下的读取行为。
-        // 下面开始按上述规则计算补齐长度。
-        
-        int remainder = sourceBytes.Length % 16;
-        int paddingNeeded = 16 - remainder; 
-        
-        // remainder 为 0 时 paddingNeeded 会变成 16（额外补一个完整块）。
-        // 这样可确保文件尾总存在可读取的补齐字节。
-        
-        byte[] newSource = new byte[sourceBytes.Length + paddingNeeded];
-        Array.Copy(sourceBytes, newSource, sourceBytes.Length);
-        
-        for (int i = 0; i < paddingNeeded; i++)
-        {
-            newSource[sourceBytes.Length + i] = (byte)i;
-        }
-        sourceBytes = newSource;
-
-        // 7. 使用 XTS 模式加密补齐后的数据。
+        // 6. 使用 XTS 模式加密数据。
         byte[] encryptedBytes = XtsEncrypt(sourceBytes);
 
-        // 8. 写出加密结果文件。
+        // 7. 写出加密结果文件。
         File.WriteAllBytes(outputFilePath, encryptedBytes);
     }
 
@@ -100,7 +76,8 @@ public class GameAssetPacker
 
         return paths
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p.Contains('/'))
+            .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -281,6 +258,16 @@ public class GameAssetPacker
             ".spc" => new HashSet<string>(new[] { ".spc" }, StringComparer.OrdinalIgnoreCase),
             _ => null
         };
+    }
+
+    // 校验源文件类型仅允许谱面或音乐文件（.txt/.spc/.ogg）。
+    private static void ValidateSupportedSourceFileType(string sourceFilePath)
+    {
+        string ext = Path.GetExtension(sourceFilePath).ToLowerInvariant();
+        if (ext is ".txt" or ".spc" or ".ogg")
+            return;
+
+        throw new Exception($"仅支持谱面/音乐文件（.txt / .spc / .ogg），当前文件类型为 {ext}。");
     }
 
     // 解析相关数据并返回结果。

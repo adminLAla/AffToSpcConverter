@@ -79,10 +79,15 @@ public partial class PackageWindow : Window
         }
     }
 
-    // 选择待打包的源资源文件。
+    // 选择待打包的谱面或音乐文件（仅支持 .txt/.spc/.ogg）。
     private void BtnBrowseSource_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog();
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择谱面/音乐文件",
+            Filter = "谱面/音乐文件 (*.txt;*.spc;*.ogg)|*.txt;*.spc;*.ogg|谱面文件 (*.txt;*.spc)|*.txt;*.spc|音乐文件 (*.ogg)|*.ogg",
+            CheckFileExists = true
+        };
         if (dialog.ShowDialog() == true)
         {
             _vm.SourceFilePath = dialog.FileName;
