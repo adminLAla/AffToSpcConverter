@@ -50,6 +50,9 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
     private string _sharedAssetsFilePath = "";
     public string SharedAssetsFilePath { get => _sharedAssetsFilePath; set { if (_sharedAssetsFilePath == value) return; _sharedAssetsFilePath = value; OnPropertyChanged(); } }
 
+    private string _resourcesAssetsFilePath = "";
+    public string ResourcesAssetsFilePath { get => _resourcesAssetsFilePath; set { if (_resourcesAssetsFilePath == value) return; _resourcesAssetsFilePath = value; OnPropertyChanged(); } }
+
     private string _jacketImageFilePath = "";
     public string JacketImageFilePath { get => _jacketImageFilePath; set { if (_jacketImageFilePath == value) return; _jacketImageFilePath = value; OnPropertyChanged(); } }
 
@@ -74,6 +77,12 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
     private string _displayArtistSectionIndicator = "0";
     public string DisplayArtistSectionIndicator { get => _displayArtistSectionIndicator; set { if (_displayArtistSectionIndicator == value) return; _displayArtistSectionIndicator = value; OnPropertyChanged(); } }
 
+    private string _songTitleEnglish = "";
+    public string SongTitleEnglish { get => _songTitleEnglish; set { if (_songTitleEnglish == value) return; _songTitleEnglish = value; OnPropertyChanged(); } }
+
+    private string _songArtistEnglish = "";
+    public string SongArtistEnglish { get => _songArtistEnglish; set { if (_songArtistEnglish == value) return; _songArtistEnglish = value; OnPropertyChanged(); } }
+
     private int _gameplayBackground;
     public int GameplayBackground { get => _gameplayBackground; set { if (_gameplayBackground == value) return; _gameplayBackground = value; OnPropertyChanged(); } }
 
@@ -85,6 +94,13 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
 
     private JacketTemplateCandidate? _selectedJacketTemplate;
     public JacketTemplateCandidate? SelectedJacketTemplate { get => _selectedJacketTemplate; set { if (_selectedJacketTemplate == value) return; _selectedJacketTemplate = value; OnPropertyChanged(); } }
+
+    private bool _manualJacketTemplateSelection;
+    public bool ManualJacketTemplateSelection
+    {
+        get => _manualJacketTemplateSelection;
+        set { if (_manualJacketTemplateSelection == value) return; _manualJacketTemplateSelection = value; OnPropertyChanged(); }
+    }
 
     private BundleTexturePackageChartRowViewModel? _selectedChartRow;
     public BundleTexturePackageChartRowViewModel? SelectedChartRow { get => _selectedChartRow; set { if (_selectedChartRow == value) return; _selectedChartRow = value; OnPropertyChanged(); } }

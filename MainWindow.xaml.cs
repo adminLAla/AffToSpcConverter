@@ -433,16 +433,16 @@ public partial class MainWindow : Window
         win.ShowDialog();
     }
 
-    // 生成并显示当前 SPC 的简要报告。
+    // 生成并显示当前 SPC 的统计信息。
     private void MenuReport_Click(object sender, RoutedEventArgs e)
     {
         var spcText = GetWorkingSpcText();
         if (string.IsNullOrWhiteSpace(spcText))
         {
-            MessageBox.Show("请先完成转换，再生成报告。");
+            MessageBox.Show("请先完成转换，再查看统计信息。");
             return;
         }
-        MessageBox.Show(ReportUtil.BuildSimpleReport(spcText, _vm), "报告");
+        MessageBox.Show(ReportUtil.BuildSimpleReport(spcText, _vm), "统计信息");
     }
 
     // 打开资源打包窗口。
@@ -457,10 +457,41 @@ public partial class MainWindow : Window
         new BundleTexturePackageWindow { Owner = this }.ShowDialog();
     }
 
+    // 恢复“打包谱面”写入到游戏目录的文件（回滚 *_original，并清理 sam 中新增哈希资源）。
+    private void MenuRestoreSongPackedFiles_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog();
+        if (dialog.ShowDialog() != true) return;
+
+        if (MessageBox.Show(
+                "将恢复该游戏目录下由“打包谱面”写入的文件：\n" +
+                "- 回滚 *_original 备份（sharedassets0.assets/resources.assets/bundle）\n" +
+                "- 清理 sam 文件夹中新增加密资源（依据 SongData 备份目录推断）\n\n" +
+                "是否继续？",
+                "恢复文件",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            string summary = UnitySongResourcePacker.RestoreDeployedSongFiles(dialog.FolderName);
+            _vm.Status = "恢复文件完成。";
+            MessageBox.Show(summary, "恢复文件", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            _vm.Status = "恢复文件失败。";
+            MessageBox.Show($"恢复失败：{ex.Message}", "恢复文件", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     // 显示关于对话框。
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("Arcaea → In Falsus 转换器\nv0.1\nWPF/.NET", "关于");
+        MessageBox.Show("Arcaea → In Falsus 转换器\nv0.9.0\nWPF/.NET", "关于");
     }
 
     // 关闭主窗口。

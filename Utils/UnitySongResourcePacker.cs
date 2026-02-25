@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -68,6 +71,7 @@ public sealed class NewSongPackRequest
 {
     public required string BundleFilePath { get; init; }
     public required string SharedAssetsFilePath { get; init; }
+    public required string ResourcesAssetsFilePath { get; init; }
     public required string OutputDirectory { get; init; }
     public required string JacketImageFilePath { get; init; }
     public required string BgmFilePath { get; init; }
@@ -79,6 +83,8 @@ public sealed class NewSongPackRequest
     public required double PreviewEndSeconds { get; init; }
     public required string DisplayNameSectionIndicator { get; init; }
     public required string DisplayArtistSectionIndicator { get; init; }
+    public required string SongTitleEnglish { get; init; }
+    public required string SongArtistEnglish { get; init; }
     public required int GameplayBackground { get; init; }
     public required int RewardStyle { get; init; }
     public required IReadOnlyList<NewSongChartPackItem> Charts { get; init; }
@@ -96,11 +102,13 @@ public sealed class NewSongPackExportResult
 {
     public required string OutputBundlePath { get; init; }
     public required string OutputSharedAssetsPath { get; init; }
+    public required string OutputResourcesAssetsPath { get; init; }
     public required long NewTexturePathId { get; init; }
     public required long NewMaterialPathId { get; init; }
     public required IReadOnlyList<NewSongMappingEntryResult> AddedMappingEntries { get; init; }
     public required SongDatabaseReadbackValidationResult SongDatabaseReadback { get; init; }
     public required string SongDatabaseArrayStructureDiagnostics { get; init; }
+    public required string DeploymentSummary { get; init; }
     public required string Summary { get; init; }
 }
 
@@ -138,6 +146,10 @@ public sealed class SongDatabaseReadbackValidationResult
 
 public static class UnitySongResourcePacker
 {
+    // 当前 In Falsus Demo（Unity 6000.3.2f1）中 DynamicStringMapping 在 resources.assets 的稳定 PathID。
+    // 若后续版本变动，代码会回退到名称扫描逻辑。
+    private const long KnownDynamicStringMappingPathId = 1375;
+
     private sealed class GeneratedResourceFile
     {
         public required NewSongMappingEntryResult MappingEntry { get; init; }
@@ -203,6 +215,66 @@ public static class UnitySongResourcePacker
         public required int EntriesArrayEndOffset { get; init; }
         public required IReadOnlyList<Entry> Entries { get; init; }
     }
+
+    private enum RawDynamicStringMappingIdEncoding
+    {
+        PackedUInt16,
+        PackedUInt16ArrayAlign4,
+        UInt16Align4PerElement
+    }
+
+    private sealed class RawDynamicStringMappingMonoBehaviourData
+    {
+        public enum IdsKind
+        {
+            WrappedUInt16,
+            WrappedString,
+            PlainInt32
+        }
+
+        public sealed class LocalizedValue
+        {
+            public required string English { get; set; }
+            public required string Japanese { get; set; }
+            public required string Korean { get; set; }
+            public required string TraditionalChinese { get; set; }
+            public required string SimplifiedChinese { get; set; }
+        }
+
+        public sealed class StringTypeMapping
+        {
+            public required string FieldName { get; init; }
+            public required IdsKind IdKind { get; init; }
+            public required List<ushort> IdsUInt16 { get; init; }
+            public required List<string> IdsString { get; init; }
+            public required List<int> IdsInt32 { get; init; }
+            public required List<string> IdStr { get; init; }
+            public required List<LocalizedValue> IdValues { get; init; }
+        }
+
+        public required byte[] OriginalBytes { get; init; }
+        public required bool BigEndian { get; init; }
+        public required string ObjectName { get; init; }
+        public required int StructureOffset { get; init; }
+        public required int StructureEndOffset { get; init; }
+        public required RawDynamicStringMappingIdEncoding IdEncoding { get; init; }
+        public required IReadOnlyList<StringTypeMapping> Mappings { get; init; }
+    }
+
+    private static readonly string[] DynamicStringMappingStructureFieldOrder =
+    {
+        "packIdTypeMapping",
+        "encounterIdTypeMapping",
+        "rawStoryNameTypeMapping",
+        "songIdTitleTypeMapping",
+        "songIdArtistTypeMapping",
+        "recipeIdTypeMapping",
+        "iotaTitleTypeMapping",
+        "iotaDescriptionTypeMapping",
+        "traitNameTypeMapping",
+        "traitDescriptionTypeMapping",
+        "cardNameTypeMapping"
+    };
 
     public static SongBundleScanResult ScanBundle(string bundleFilePath)
     {
@@ -284,55 +356,72 @@ public static class UnitySongResourcePacker
 
         string bundleSrc = Path.GetFullPath(request.BundleFilePath);
         string sharedSrc = ResolveStreamingAssetsMappingHostPath(request.SharedAssetsFilePath);
+        string resourcesSrc = Path.GetFullPath(request.ResourcesAssetsFilePath);
         string outDir = Path.GetFullPath(request.OutputDirectory);
         Directory.CreateDirectory(outDir);
 
         var bundlePlan = PrepareOutputPlan(bundleSrc, Path.Combine(outDir, Path.GetFileName(bundleSrc)), request.AutoRenameWhenTargetLocked);
         var sharedPlan = PrepareOutputPlan(sharedSrc, Path.Combine(outDir, Path.GetFileName(sharedSrc)), request.AutoRenameWhenTargetLocked);
+        var resourcesPlan = PrepareOutputPlan(resourcesSrc, Path.Combine(outDir, Path.GetFileName(resourcesSrc)), request.AutoRenameWhenTargetLocked);
 
         var jacket = LoadPreparedImage(request.JacketImageFilePath);
         long newTexPathId = 0;
         long newMatPathId = 0;
         string songDbArrayDiagnostics = "";
         SongDatabaseReadbackValidationResult? songDbReadback = null;
+        string deploymentSummary = "";
+        (int written, int reused) encryptedResourceWriteStats = (0, 0);
         try
         {
             (newTexPathId, newMatPathId, songDbArrayDiagnostics) = ExportModifiedBundle(request, bundlePlan, jacket);
             ExportModifiedSharedAssets(sharedSrc, sharedPlan, generatedFiles.Select(x => x.MappingEntry).ToList());
+            ExportModifiedResourcesAssets(resourcesSrc, resourcesPlan, request.SelectedSlot.SlotIndex, request.SongTitleEnglish, request.SongArtistEnglish);
             FinalizeOutputPlan(bundlePlan);
             FinalizeOutputPlan(sharedPlan);
-            try
-            {
-                songDbReadback = ReadBackExportedSongDatabase(bundlePlan.FinalOutputPath, request.SelectedSlot.SlotIndex);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception(
-                    $"{ex.Message}\nSongDatabase 数组结构摘要（写前/写后）：\n{songDbArrayDiagnostics}",
-                    ex);
-            }
+            FinalizeOutputPlan(resourcesPlan);
 
-            foreach (var file in generatedFiles)
-            {
-                string outputPath = Path.Combine(outDir, file.MappingEntry.Guid);
-                File.WriteAllBytes(outputPath, GameAssetPacker.EncryptBytesForGame(file.PlainBytes));
-            }
+            encryptedResourceWriteStats = WriteGeneratedEncryptedFiles(outDir, generatedFiles);
+
+            deploymentSummary = DeployOutputsToGameDirectories(
+                bundleSrc,
+                sharedSrc,
+                resourcesSrc,
+                bundlePlan.FinalOutputPath,
+                sharedPlan.FinalOutputPath,
+                resourcesPlan.FinalOutputPath,
+                outDir,
+                generatedFiles);
 
             return new NewSongPackExportResult
             {
                 OutputBundlePath = bundlePlan.FinalOutputPath,
                 OutputSharedAssetsPath = sharedPlan.FinalOutputPath,
+                OutputResourcesAssetsPath = resourcesPlan.FinalOutputPath,
                 NewTexturePathId = newTexPathId,
                 NewMaterialPathId = newMatPathId,
                 AddedMappingEntries = generatedFiles.Select(x => x.MappingEntry).ToList(),
-                SongDatabaseReadback = songDbReadback ?? throw new Exception("导出后无法读取 SongDatabase 回读校验结果。"),
+                SongDatabaseReadback = songDbReadback ?? new SongDatabaseReadbackValidationResult
+                {
+                    SlotIndex = request.SelectedSlot.SlotIndex,
+                    SongId = request.SelectedSlot.SlotIndex,
+                    BaseName = request.BaseName,
+                    ChartInfos = Array.Empty<SongDatabaseReadbackValidationResult.ChartInfo>(),
+                    SongIdJacketMaterials = Array.Empty<SongDatabaseReadbackValidationResult.SongIdJacketMaterialEntry>(),
+                    ChartIdJacketMaterials = Array.Empty<SongDatabaseReadbackValidationResult.ChartIdJacketMaterialEntry>()
+                },
                 SongDatabaseArrayStructureDiagnostics = songDbArrayDiagnostics,
-                Summary = $"新增歌曲成功：{request.BaseName}，槽位 {request.SelectedSlot.SlotIndex}。新增映射 {generatedFiles.Count} 项。"
+                DeploymentSummary = deploymentSummary,
+                Summary =
+                    $"新增歌曲成功：{request.BaseName}，槽位 {request.SelectedSlot.SlotIndex}。新增映射 {generatedFiles.Count} 项。\n" +
+                    $"加密资源写入：新写入 {encryptedResourceWriteStats.written} 项，复用备份 {encryptedResourceWriteStats.reused} 项。\n" +
+                    "已将修改写入游戏目录（原文件备份为 *_original），并在 SongData 目录保留备份。"
             };
         }
         finally
         {
             jacket.ReleaseHeavyBuffers();
+            generatedFiles.Clear();
+            TryTrimManagedMemoryAfterHeavyOperation();
         }
     }
 
@@ -342,6 +431,8 @@ public static class UnitySongResourcePacker
         ValidateBundlePath(request.BundleFilePath);
         if (string.IsNullOrWhiteSpace(request.SharedAssetsFilePath) || !File.Exists(request.SharedAssetsFilePath))
             throw new FileNotFoundException($"sharedassets0.assets 不存在：{request.SharedAssetsFilePath}");
+        if (string.IsNullOrWhiteSpace(request.ResourcesAssetsFilePath) || !File.Exists(request.ResourcesAssetsFilePath))
+            throw new FileNotFoundException($"resources.assets 不存在：{request.ResourcesAssetsFilePath}");
         if (string.IsNullOrWhiteSpace(request.OutputDirectory))
             throw new Exception("请选择导出文件夹。");
         ValidateImagePath(request.JacketImageFilePath);
@@ -349,6 +440,8 @@ public static class UnitySongResourcePacker
             throw new FileNotFoundException($"BGM 文件不存在：{request.BgmFilePath}");
         if (request.SelectedSlot == null || !request.SelectedSlot.IsEmpty)
             throw new Exception("请选择空槽。");
+        if (request.SelectedSlot.SlotIndex < 2)
+            throw new Exception("槽位 00/01 为保留槽位，请选择 02-76 的空槽。");
         if (request.JacketTemplate == null)
             throw new Exception("请选择曲绘模板。");
 
@@ -361,6 +454,11 @@ public static class UnitySongResourcePacker
         string bgmExt = Path.GetExtension(request.BgmFilePath).ToLowerInvariant();
         if (bgmExt is not ".ogg" and not ".wav")
             throw new Exception($"BGM 仅支持 .ogg/.wav：{request.BgmFilePath}");
+
+        if (string.IsNullOrWhiteSpace(request.SongTitleEnglish))
+            throw new Exception("请填写曲名(English)，用于 resources.assets / DynamicStringMapping 显示。");
+        if (string.IsNullOrWhiteSpace(request.SongArtistEnglish))
+            throw new Exception("请填写曲师(English)，用于 resources.assets / DynamicStringMapping 显示。");
 
         if (request.Charts == null || request.Charts.Count == 0)
             throw new Exception("请至少配置一个谱面。");
@@ -388,7 +486,7 @@ public static class UnitySongResourcePacker
 
     private static List<GeneratedResourceFile> BuildGeneratedResourceFiles(NewSongPackRequest request)
     {
-        var list = new List<GeneratedResourceFile>();
+        var list = new List<GeneratedResourceFile>(request.Charts.Count + 1);
 
         // 游戏运行时按 BaseName.wav 查找 BGM 映射项，因此这里固定使用 .wav 作为 FullLookupPath。
         string bgmLookup = $"{request.BaseName}.wav";
@@ -429,11 +527,50 @@ public static class UnitySongResourcePacker
     private static string ComputeGuidFromPathAndBytes(string fullLookupPath, byte[] bytes)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(fullLookupPath.Replace('\\', '/'));
-        byte[] combined = new byte[pathBytes.Length + bytes.Length];
-        Buffer.BlockCopy(pathBytes, 0, combined, 0, pathBytes.Length);
-        Buffer.BlockCopy(bytes, 0, combined, pathBytes.Length, bytes.Length);
-        byte[] md5 = MD5.HashData(combined);
-        return System.Convert.ToHexString(md5).ToLowerInvariant();
+        using var md5 = MD5.Create();
+        md5.TransformBlock(pathBytes, 0, pathBytes.Length, null, 0);
+        md5.TransformFinalBlock(bytes, 0, bytes.Length);
+        byte[] md5Bytes = md5.Hash ?? throw new Exception("计算 MD5 失败。");
+        return System.Convert.ToHexString(md5Bytes).ToLowerInvariant();
+    }
+
+    // 将生成的 BGM/SPC 加密资源写入 SongData 备份目录；若同 GUID 文件已存在则直接复用，减少重复加密与写盘。
+    private static (int written, int reused) WriteGeneratedEncryptedFiles(string outputDirectory, IReadOnlyList<GeneratedResourceFile> generatedFiles)
+    {
+        int written = 0;
+        int reused = 0;
+        foreach (var file in generatedFiles)
+        {
+            string outputPath = Path.Combine(outputDirectory, file.MappingEntry.Guid);
+            if (TryReuseExistingEncryptedBackup(outputPath, file.PlainBytes.Length))
+            {
+                reused++;
+                continue;
+            }
+
+            byte[] encrypted = GameAssetPacker.EncryptBytesForGame(file.PlainBytes);
+            using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 128 * 1024))
+            {
+                fs.Write(encrypted, 0, encrypted.Length);
+            }
+            written++;
+        }
+        return (written, reused);
+    }
+
+    // GUID 已包含 FullLookupPath+内容哈希；同名且长度一致时视为可复用备份，避免重复写盘。
+    private static bool TryReuseExistingEncryptedBackup(string outputPath, int expectedLength)
+    {
+        try
+        {
+            if (!File.Exists(outputPath)) return false;
+            var fi = new FileInfo(outputPath);
+            return fi.Length == expectedLength;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void CollectTextureAndMaterialNames(
@@ -795,6 +932,672 @@ public static class UnitySongResourcePacker
         {
             am.UnloadAll(true);
         }
+    }
+
+    private static void ExportModifiedResourcesAssets(
+        string resourcesAssetsSourcePath,
+        OutputPlan outputPlan,
+        int songId,
+        string titleEnglish,
+        string artistEnglish)
+    {
+        var am = new AssetsManager();
+        try
+        {
+            var assetsInst = am.LoadAssetsFile(resourcesAssetsSourcePath, loadDeps: true);
+            PrepareAssetsManagerForBaseFieldReading(am, assetsInst);
+
+            var dynamicStringMappingInfo = FindDynamicStringMappingMonoBehaviourAsset(am, assetsInst)
+                ?? throw new Exception($"未在 {Path.GetFileName(resourcesAssetsSourcePath)} 中找到 DynamicStringMapping（MonoBehaviour）。");
+
+            ApplyDynamicStringMappingEdit(am, assetsInst, dynamicStringMappingInfo, songId, titleEnglish, artistEnglish);
+            WriteAssetsFileApplyingReplacers(assetsInst.file, outputPlan.PackOutputPath);
+        }
+        finally
+        {
+            am.UnloadAll(true);
+        }
+    }
+
+    private static AssetFileInfo? FindDynamicStringMappingMonoBehaviourAsset(AssetsManager am, AssetsFileInstance assetsInst)
+    {
+        // 先走已知 PathID 快速路径，避免扫描所有 MonoBehaviour 并触发大量 GetBaseField first-chance 异常。
+        var fastInfo = assetsInst.file.GetAssetInfo(KnownDynamicStringMappingPathId);
+        if (fastInfo != null && fastInfo.TypeId == (int)AssetClassID.MonoBehaviour)
+        {
+            string? rawName = TryReadRawMonoBehaviourObjectName(assetsInst, fastInfo);
+            if (string.Equals(rawName, "DynamicStringMapping", StringComparison.OrdinalIgnoreCase))
+                return fastInfo;
+
+            var fastBaseField = TryGetBaseFieldSafe(am, assetsInst, fastInfo);
+            if (fastBaseField != null)
+            {
+                string fastName = TryReadStringField(fastBaseField, "m_Name") ?? "";
+                if (string.Equals(fastName, "DynamicStringMapping", StringComparison.OrdinalIgnoreCase))
+                    return fastInfo;
+            }
+        }
+
+        foreach (var info in assetsInst.file.GetAssetsOfType(AssetClassID.MonoBehaviour))
+        {
+            if (info.PathId == KnownDynamicStringMappingPathId)
+                continue;
+            try
+            {
+                // 优先原始字节读取 m_Name，避免 Unity6 下 GetBaseField 对无关 MonoBehaviour 抛 NRE。
+                string name = TryReadRawMonoBehaviourObjectName(assetsInst, info) ?? "";
+                if (string.IsNullOrEmpty(name))
+                {
+                    var baseField = TryGetBaseFieldSafe(am, assetsInst, info);
+                    if (baseField == null) continue;
+                    name = TryReadStringField(baseField, "m_Name") ?? "";
+                }
+                if (string.Equals(name, "DynamicStringMapping", StringComparison.OrdinalIgnoreCase))
+                    return info;
+            }
+            catch
+            {
+            }
+        }
+        return null;
+    }
+
+    // 新增歌曲打包会生成大字节数组（曲绘/加密资源/bundle写出缓存）；导出结束后主动压缩 LOH 并修剪工作集。
+    private static void TryTrimManagedMemoryAfterHeavyOperation()
+    {
+        try
+        {
+            if (GC.GetTotalMemory(false) < 128L * 1024 * 1024)
+                return;
+
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            TryTrimProcessWorkingSet();
+        }
+        catch
+        {
+            // 回收优化失败不影响导出结果。
+        }
+    }
+
+    private static void TryTrimProcessWorkingSet()
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            _ = EmptyWorkingSet(process.Handle);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    // 仅解析 MonoBehaviour 基础字段中的 m_Name，避免构建完整 typetree 带来的异常与开销。
+    private static string? TryReadRawMonoBehaviourObjectName(AssetsFileInstance assetsInst, AssetFileInfo info)
+    {
+        try
+        {
+            if (info.TypeId != (int)AssetClassID.MonoBehaviour)
+                return null;
+
+            var fileReader = assetsInst.file.Reader;
+            if (fileReader == null) return null;
+            bool bigEndian = fileReader.BigEndian;
+
+            long prevPos = fileReader.Position;
+            byte[] rawBytes;
+            try
+            {
+                long absOffset = info.GetAbsoluteByteOffset(assetsInst.file);
+                fileReader.Position = absOffset;
+                rawBytes = ReadExactBytes(fileReader.BaseStream, checked((int)info.ByteSize));
+            }
+            finally
+            {
+                try { fileReader.Position = prevPos; } catch { }
+            }
+
+            using var ms = new MemoryStream(rawBytes, writable: false);
+            using var r = new AssetsFileReader(ms) { BigEndian = bigEndian };
+
+            _ = r.ReadInt32(); // m_GameObject.m_FileID
+            _ = r.ReadInt64(); // m_GameObject.m_PathID
+            if (r.BaseStream.ReadByte() < 0) return null; // m_Enabled
+            r.Align();
+            _ = r.ReadInt32(); // m_Script.m_FileID
+            _ = r.ReadInt64(); // m_Script.m_PathID
+            string name = r.ReadCountStringInt32();
+            return name;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void ApplyDynamicStringMappingEdit(
+        AssetsManager am,
+        AssetsFileInstance assetsInst,
+        AssetFileInfo mappingInfo,
+        int songId,
+        string titleEnglish,
+        string artistEnglish)
+    {
+        Exception? typetreeEx = null;
+        var baseField = TryGetBaseFieldSafe(am, assetsInst, mappingInfo);
+        if (baseField != null)
+        {
+            try
+            {
+                string name = TryReadStringField(baseField, "m_Name") ?? "";
+                if (!string.Equals(name, "DynamicStringMapping", StringComparison.OrdinalIgnoreCase))
+                    throw new Exception($"目标 MonoBehaviour 不是 DynamicStringMapping：m_Name={name}");
+
+                var structure = RequireField(baseField, "m_Structure");
+                UpsertDynamicStringTypeMappingEntry(structure, "songIdTitleTypeMapping", songId, titleEnglish);
+                UpsertDynamicStringTypeMappingEntry(structure, "songIdArtistTypeMapping", songId, artistEnglish);
+
+                mappingInfo.SetNewData(baseField);
+                return;
+            }
+            catch (Exception ex)
+            {
+                typetreeEx = ex;
+            }
+        }
+
+        var raw = TryReadRawDynamicStringMappingMonoBehaviour(assetsInst, mappingInfo);
+        if (raw != null)
+        {
+            if (!string.Equals(raw.ObjectName, "DynamicStringMapping", StringComparison.OrdinalIgnoreCase))
+                throw new Exception($"目标 MonoBehaviour 不是 DynamicStringMapping：m_Name={raw.ObjectName}");
+
+            UpsertRawDynamicStringTypeMappingEntry(raw, "songIdTitleTypeMapping", checked((ushort)songId), titleEnglish);
+            UpsertRawDynamicStringTypeMappingEntry(raw, "songIdArtistTypeMapping", checked((ushort)songId), artistEnglish);
+            mappingInfo.SetNewData(BuildUpdatedRawDynamicStringMappingMonoBehaviour(raw));
+            return;
+        }
+
+        if (typetreeEx != null)
+            throw new Exception($"无法写入 DynamicStringMapping：typetree 路径失败且原始字节回退解析失败。typetree错误：{typetreeEx.Message}", typetreeEx);
+
+        throw new Exception("无法写入 DynamicStringMapping：GetBaseField 返回空且原始字节回退解析失败。");
+    }
+
+    private static void UpsertDynamicStringTypeMappingEntry(
+        AssetTypeValueField structureField,
+        string mappingFieldName,
+        int songId,
+        string englishText)
+    {
+        var mappingField = RequireField(structureField, mappingFieldName);
+        var idsOwner = RequireField(mappingField, "Ids");
+        var idsArray = RequireArrayField(idsOwner);
+        var idElems = GetArrayElements(idsArray);
+
+        AssetTypeValueField? idStrArray = null;
+        List<AssetTypeValueField>? idStrElems = null;
+        if (TryGetField(mappingField, "IdStr", out var idStrOwner))
+        {
+            idStrArray = RequireArrayField(idStrOwner);
+            idStrElems = GetArrayElements(idStrArray);
+        }
+
+        var idValuesOwner = RequireField(mappingField, "IdValues");
+        var idValuesArray = RequireArrayField(idValuesOwner);
+        var idValueElems = GetArrayElements(idValuesArray);
+
+        if (idElems.Count != idValueElems.Count)
+            throw new Exception($"{mappingFieldName} 结构异常：Ids({idElems.Count}) 与 IdValues({idValueElems.Count}) 数量不一致。");
+        if (idStrElems != null && idStrElems.Count != idElems.Count)
+            throw new Exception($"{mappingFieldName} 结构异常：Ids({idElems.Count}) 与 IdStr({idStrElems.Count}) 数量不一致。");
+
+        int index = -1;
+        for (int i = 0; i < idElems.Count; i++)
+        {
+            int value = (int)(TryReadNumberField(UnwrapDataField(idElems[i]), "Value") ?? -1);
+            if (value == songId)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index >= 0)
+        {
+            WriteSongIdElement(idElems[index], songId);
+            if (idStrElems != null) WriteStringArrayElement(idStrElems[index], englishText);
+            WriteLocalizedStringValue(idValueElems[index], englishText, clearOtherLanguages: false);
+            return;
+        }
+
+        if (idElems.Count == 0 || idValueElems.Count == 0)
+            throw new Exception($"{mappingFieldName} 结构异常：无法从空数组推断模板，不能新增条目。");
+
+        var newIdElem = idElems[0].Clone();
+        WriteSongIdElement(newIdElem, songId);
+        var newIds = new List<AssetTypeValueField>(idElems.Count + 1);
+        newIds.AddRange(idElems);
+        newIds.Add(newIdElem);
+        ReplaceArrayElements(idsArray, newIds, cloneElements: false);
+
+        if (idStrArray != null && idStrElems != null)
+        {
+            if (idStrElems.Count == 0)
+                throw new Exception($"{mappingFieldName} 结构异常：IdStr 数组为空，无法克隆模板。");
+            var newIdStrElem = idStrElems[0].Clone();
+            WriteStringArrayElement(newIdStrElem, englishText);
+            var newIdStrs = new List<AssetTypeValueField>(idStrElems.Count + 1);
+            newIdStrs.AddRange(idStrElems);
+            newIdStrs.Add(newIdStrElem);
+            ReplaceArrayElements(idStrArray, newIdStrs, cloneElements: false);
+        }
+
+        var newIdValueElem = idValueElems[0].Clone();
+        WriteLocalizedStringValue(newIdValueElem, englishText, clearOtherLanguages: true);
+        var newIdValues = new List<AssetTypeValueField>(idValueElems.Count + 1);
+        newIdValues.AddRange(idValueElems);
+        newIdValues.Add(newIdValueElem);
+        ReplaceArrayElements(idValuesArray, newIdValues, cloneElements: false);
+    }
+
+    private static void WriteSongIdElement(AssetTypeValueField idElem, int songId)
+    {
+        idElem = UnwrapDataField(idElem);
+        RequireSetNumberField(idElem, "Value", songId);
+    }
+
+    private static void WriteStringArrayElement(AssetTypeValueField elem, string value)
+    {
+        elem = UnwrapDataField(elem);
+        EnsureFieldValueInitialized(elem);
+        try { elem.AsString = value; return; } catch { }
+        try { elem.Value = new AssetTypeValue(value); return; } catch { }
+        throw new Exception($"无法写入字符串数组元素：FieldName={SafeFieldName(elem)}");
+    }
+
+    private static void WriteLocalizedStringValue(AssetTypeValueField idValueElem, string englishText, bool clearOtherLanguages)
+    {
+        idValueElem = UnwrapDataField(idValueElem);
+        RequireSetStringField(idValueElem, "English", englishText ?? "");
+        if (!clearOtherLanguages) return;
+
+        TrySetStringField(idValueElem, "Japanese", "");
+        TrySetStringField(idValueElem, "Korean", "");
+        TrySetStringField(idValueElem, "TraditionalChinese", "");
+        TrySetStringField(idValueElem, "SimplifiedChinese", "");
+    }
+
+    private static RawDynamicStringMappingMonoBehaviourData? TryReadRawDynamicStringMappingMonoBehaviour(AssetsFileInstance assetsInst, AssetFileInfo info)
+    {
+        try
+        {
+            if (info.TypeId != (int)AssetClassID.MonoBehaviour)
+                return null;
+
+            var fileReader = assetsInst.file.Reader;
+            if (fileReader == null) return null;
+            bool bigEndian = fileReader.BigEndian;
+
+            long prevPos = fileReader.Position;
+            byte[] rawBytes;
+            try
+            {
+                long absOffset = info.GetAbsoluteByteOffset(assetsInst.file);
+                fileReader.Position = absOffset;
+                rawBytes = ReadExactBytes(fileReader.BaseStream, checked((int)info.ByteSize));
+            }
+            finally
+            {
+                try { fileReader.Position = prevPos; } catch { }
+            }
+
+            string objectName;
+            int structureOffset;
+            using (var ms = new MemoryStream(rawBytes, writable: false))
+            using (var r = new AssetsFileReader(ms) { BigEndian = bigEndian })
+            {
+                _ = r.ReadInt32(); // m_GameObject.m_FileID
+                _ = r.ReadInt64(); // m_GameObject.m_PathID
+                if (r.BaseStream.ReadByte() < 0) return null; // m_Enabled
+                r.Align();
+                _ = r.ReadInt32(); // m_Script.m_FileID
+                _ = r.ReadInt64(); // m_Script.m_PathID
+                objectName = r.ReadCountStringInt32();
+                r.Align();
+                structureOffset = checked((int)r.Position);
+            }
+
+            foreach (var encoding in Enum.GetValues(typeof(RawDynamicStringMappingIdEncoding)).Cast<RawDynamicStringMappingIdEncoding>())
+            {
+                try
+                {
+                    using var ms = new MemoryStream(rawBytes, writable: false);
+                    using var r = new AssetsFileReader(ms) { BigEndian = bigEndian };
+                    r.Position = structureOffset;
+
+                    var mappings = new List<RawDynamicStringMappingMonoBehaviourData.StringTypeMapping>(DynamicStringMappingStructureFieldOrder.Length);
+                    foreach (string fieldName in DynamicStringMappingStructureFieldOrder)
+                    {
+                        mappings.Add(ReadRawDynamicStringTypeMapping(r, fieldName, encoding));
+                    }
+
+                    int structureEndOffset = checked((int)r.Position);
+                    if (structureEndOffset <= structureOffset || structureEndOffset > rawBytes.Length)
+                        continue;
+
+                    return new RawDynamicStringMappingMonoBehaviourData
+                    {
+                        OriginalBytes = rawBytes,
+                        BigEndian = bigEndian,
+                        ObjectName = objectName,
+                        StructureOffset = structureOffset,
+                        StructureEndOffset = structureEndOffset,
+                        IdEncoding = encoding,
+                        Mappings = mappings
+                    };
+                }
+                catch
+                {
+                    // 尝试下一种 Id 编码布局。
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static RawDynamicStringMappingMonoBehaviourData.StringTypeMapping ReadRawDynamicStringTypeMapping(
+        AssetsFileReader r,
+        string fieldName,
+        RawDynamicStringMappingIdEncoding idEncoding)
+    {
+        var idKind = GetDynamicStringMappingIdsKind(fieldName);
+        var idsU16 = new List<ushort>();
+        var idsStr = new List<string>();
+        var idsI32 = new List<int>();
+
+        switch (idKind)
+        {
+            case RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16:
+                idsU16 = ReadRawDynamicStringWrappedUInt16IdArray(r, idEncoding);
+                break;
+            case RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedString:
+                idsStr = ReadRawDynamicStringWrappedStringIdArray(r);
+                break;
+            case RawDynamicStringMappingMonoBehaviourData.IdsKind.PlainInt32:
+                idsI32 = ReadRawDynamicStringPlainInt32IdArray(r);
+                break;
+            default:
+                throw new Exception($"未知 DynamicStringMapping Ids 类型：{idKind}");
+        }
+
+        var idStr = ReadRawDynamicStringStringArray(r);
+        var idValues = ReadRawDynamicStringLocalizedValueArray(r);
+
+        int idCount = idKind switch
+        {
+            RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16 => idsU16.Count,
+            RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedString => idsStr.Count,
+            RawDynamicStringMappingMonoBehaviourData.IdsKind.PlainInt32 => idsI32.Count,
+            _ => -1
+        };
+        if (idCount != idStr.Count || idCount != idValues.Count)
+            throw new Exception($"{fieldName} 数组数量不一致：Ids={idCount}, IdStr={idStr.Count}, IdValues={idValues.Count}");
+
+        return new RawDynamicStringMappingMonoBehaviourData.StringTypeMapping
+        {
+            FieldName = fieldName,
+            IdKind = idKind,
+            IdsUInt16 = idsU16,
+            IdsString = idsStr,
+            IdsInt32 = idsI32,
+            IdStr = idStr,
+            IdValues = idValues
+        };
+    }
+
+    private static RawDynamicStringMappingMonoBehaviourData.IdsKind GetDynamicStringMappingIdsKind(string fieldName)
+    {
+        if (string.Equals(fieldName, "rawStoryNameTypeMapping", StringComparison.Ordinal))
+            return RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedString;
+        if (string.Equals(fieldName, "cardNameTypeMapping", StringComparison.Ordinal))
+            return RawDynamicStringMappingMonoBehaviourData.IdsKind.PlainInt32;
+        return RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16;
+    }
+
+    private static List<ushort> ReadRawDynamicStringWrappedUInt16IdArray(AssetsFileReader r, RawDynamicStringMappingIdEncoding encoding)
+    {
+        int count = r.ReadInt32();
+        if (count < 0 || count > 100_000)
+            throw new Exception($"DynamicStringMapping.Ids 数量异常：{count}");
+
+        var list = new List<ushort>(count);
+        for (int i = 0; i < count; i++)
+        {
+            list.Add(r.ReadUInt16());
+            if (encoding == RawDynamicStringMappingIdEncoding.UInt16Align4PerElement)
+                r.Align();
+        }
+
+        if (encoding == RawDynamicStringMappingIdEncoding.PackedUInt16ArrayAlign4)
+            r.Align();
+
+        return list;
+    }
+
+    private static List<string> ReadRawDynamicStringWrappedStringIdArray(AssetsFileReader r)
+    {
+        int count = r.ReadInt32();
+        if (count < 0 || count > 100_000)
+            throw new Exception($"DynamicStringMapping.Ids(包装字符串) 数量异常：{count}");
+
+        var list = new List<string>(count);
+        for (int i = 0; i < count; i++)
+        {
+            list.Add(r.ReadCountStringInt32());
+            r.Align();
+        }
+        return list;
+    }
+
+    private static List<int> ReadRawDynamicStringPlainInt32IdArray(AssetsFileReader r)
+    {
+        int count = r.ReadInt32();
+        if (count < 0 || count > 100_000)
+            throw new Exception($"DynamicStringMapping.Ids(int) 数量异常：{count}");
+
+        var list = new List<int>(count);
+        for (int i = 0; i < count; i++)
+            list.Add(r.ReadInt32());
+        return list;
+    }
+
+    private static List<string> ReadRawDynamicStringStringArray(AssetsFileReader r)
+    {
+        int count = r.ReadInt32();
+        if (count < 0 || count > 100_000)
+            throw new Exception($"DynamicStringMapping.StringArray 数量异常：{count}");
+
+        var list = new List<string>(count);
+        for (int i = 0; i < count; i++)
+        {
+            list.Add(r.ReadCountStringInt32());
+            r.Align();
+        }
+        return list;
+    }
+
+    private static List<RawDynamicStringMappingMonoBehaviourData.LocalizedValue> ReadRawDynamicStringLocalizedValueArray(AssetsFileReader r)
+    {
+        int count = r.ReadInt32();
+        if (count < 0 || count > 100_000)
+            throw new Exception($"DynamicStringMapping.IdValues 数量异常：{count}");
+
+        var list = new List<RawDynamicStringMappingMonoBehaviourData.LocalizedValue>(count);
+        for (int i = 0; i < count; i++)
+        {
+            list.Add(ReadRawDynamicStringLocalizedValue(r));
+        }
+        return list;
+    }
+
+    private static RawDynamicStringMappingMonoBehaviourData.LocalizedValue ReadRawDynamicStringLocalizedValue(AssetsFileReader r)
+    {
+        string english = r.ReadCountStringInt32();
+        r.Align();
+        string japanese = r.ReadCountStringInt32();
+        r.Align();
+        string korean = r.ReadCountStringInt32();
+        r.Align();
+        string traditionalChinese = r.ReadCountStringInt32();
+        r.Align();
+        string simplifiedChinese = r.ReadCountStringInt32();
+        r.Align();
+
+        return new RawDynamicStringMappingMonoBehaviourData.LocalizedValue
+        {
+            English = english,
+            Japanese = japanese,
+            Korean = korean,
+            TraditionalChinese = traditionalChinese,
+            SimplifiedChinese = simplifiedChinese
+        };
+    }
+
+    private static void UpsertRawDynamicStringTypeMappingEntry(
+        RawDynamicStringMappingMonoBehaviourData raw,
+        string mappingFieldName,
+        ushort songId,
+        string englishText)
+    {
+        var mapping = raw.Mappings.FirstOrDefault(m => string.Equals(m.FieldName, mappingFieldName, StringComparison.Ordinal))
+            ?? throw new Exception($"DynamicStringMapping 中未找到字段：{mappingFieldName}");
+
+        if (mapping.IdKind != RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16)
+            throw new Exception($"{mappingFieldName} 的 Ids 类型不是 SongId/UInt16，无法按歌曲 ID 写入。");
+
+        if (mapping.IdsUInt16.Count != mapping.IdStr.Count || mapping.IdsUInt16.Count != mapping.IdValues.Count)
+            throw new Exception($"{mappingFieldName} 结构异常：Ids/IdStr/IdValues 数量不一致。");
+
+        int index = mapping.IdsUInt16.FindIndex(x => x == songId);
+        if (index >= 0)
+        {
+            mapping.IdStr[index] = englishText ?? "";
+            mapping.IdValues[index].English = englishText ?? "";
+            return;
+        }
+
+        mapping.IdsUInt16.Add(songId);
+        mapping.IdStr.Add(englishText ?? "");
+        mapping.IdValues.Add(new RawDynamicStringMappingMonoBehaviourData.LocalizedValue
+        {
+            English = englishText ?? "",
+            Japanese = "",
+            Korean = "",
+            TraditionalChinese = "",
+            SimplifiedChinese = ""
+        });
+    }
+
+    private static byte[] BuildUpdatedRawDynamicStringMappingMonoBehaviour(RawDynamicStringMappingMonoBehaviourData raw)
+    {
+        using var ms = new MemoryStream(raw.OriginalBytes.Length + 4096);
+        ms.Write(raw.OriginalBytes, 0, raw.StructureOffset);
+
+        using (var w = new AssetsFileWriter(ms) { BigEndian = raw.BigEndian })
+        {
+            foreach (var mapping in raw.Mappings)
+            {
+                WriteRawDynamicStringTypeMapping(w, mapping, raw.IdEncoding);
+            }
+        }
+
+        if (raw.StructureEndOffset < raw.OriginalBytes.Length)
+            ms.Write(raw.OriginalBytes, raw.StructureEndOffset, raw.OriginalBytes.Length - raw.StructureEndOffset);
+
+        return ms.ToArray();
+    }
+
+    private static void WriteRawDynamicStringTypeMapping(
+        AssetsFileWriter w,
+        RawDynamicStringMappingMonoBehaviourData.StringTypeMapping mapping,
+        RawDynamicStringMappingIdEncoding idEncoding)
+    {
+        int idCount = mapping.IdKind switch
+        {
+            RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16 => mapping.IdsUInt16.Count,
+            RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedString => mapping.IdsString.Count,
+            RawDynamicStringMappingMonoBehaviourData.IdsKind.PlainInt32 => mapping.IdsInt32.Count,
+            _ => -1
+        };
+        if (idCount != mapping.IdStr.Count || idCount != mapping.IdValues.Count)
+            throw new Exception($"{mapping.FieldName} 结构异常：Ids/IdStr/IdValues 数量不一致。");
+
+        switch (mapping.IdKind)
+        {
+            case RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16:
+                w.Write(mapping.IdsUInt16.Count);
+                foreach (ushort id in mapping.IdsUInt16)
+                {
+                    w.Write(id);
+                    if (idEncoding == RawDynamicStringMappingIdEncoding.UInt16Align4PerElement)
+                        w.Align();
+                }
+                if (idEncoding == RawDynamicStringMappingIdEncoding.PackedUInt16ArrayAlign4)
+                    w.Align();
+                break;
+            case RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedString:
+                w.Write(mapping.IdsString.Count);
+                foreach (string id in mapping.IdsString)
+                {
+                    w.WriteCountStringInt32(id ?? "");
+                    w.Align();
+                }
+                break;
+            case RawDynamicStringMappingMonoBehaviourData.IdsKind.PlainInt32:
+                w.Write(mapping.IdsInt32.Count);
+                foreach (int id in mapping.IdsInt32)
+                    w.Write(id);
+                break;
+            default:
+                throw new Exception($"未知 DynamicStringMapping Ids 类型：{mapping.IdKind}");
+        }
+
+        w.Write(mapping.IdStr.Count);
+        foreach (var s in mapping.IdStr)
+        {
+            w.WriteCountStringInt32(s ?? "");
+            w.Align();
+        }
+
+        w.Write(mapping.IdValues.Count);
+        foreach (var lv in mapping.IdValues)
+        {
+            WriteRawDynamicStringLocalizedValue(w, lv);
+        }
+    }
+
+    private static void WriteRawDynamicStringLocalizedValue(AssetsFileWriter w, RawDynamicStringMappingMonoBehaviourData.LocalizedValue value)
+    {
+        w.WriteCountStringInt32(value.English ?? "");
+        w.Align();
+        w.WriteCountStringInt32(value.Japanese ?? "");
+        w.Align();
+        w.WriteCountStringInt32(value.Korean ?? "");
+        w.Align();
+        w.WriteCountStringInt32(value.TraditionalChinese ?? "");
+        w.Align();
+        w.WriteCountStringInt32(value.SimplifiedChinese ?? "");
+        w.Align();
     }
 
     private static string ResolveStreamingAssetsMappingHostPath(string preferredAssetsPath)
@@ -1215,7 +2018,10 @@ public static class UnitySongResourcePacker
         var info = assetsInst.file.GetAssetInfo(songDbPathId)
             ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
         var baseField = am.GetBaseField(assetsInst, info, AssetReadFlags.None);
-        string beforeSummary = SafeBuildSongDatabaseArrayStructureSummary(baseField, request.SelectedSlot.SlotIndex, "写前");
+        bool enableStructureSummaryDiagnostics = false;
+        string beforeSummary = enableStructureSummaryDiagnostics
+            ? SafeBuildSongDatabaseArrayStructureSummary(baseField, request.SelectedSlot.SlotIndex, "写前")
+            : "";
 
         try
         {
@@ -1246,12 +2052,18 @@ public static class UnitySongResourcePacker
             ValidateSongDataSongIdsUnique(slots);
             ValidateSongDataJacketLookupKeysUnique(baseField, "写入曲绘索引后");
 
-            string afterSummary = SafeBuildSongDatabaseArrayStructureSummary(baseField, request.SelectedSlot.SlotIndex, "写后");
             info.SetNewData(baseField);
+            if (!enableStructureSummaryDiagnostics)
+                return "";
+
+            string afterSummary = SafeBuildSongDatabaseArrayStructureSummary(baseField, request.SelectedSlot.SlotIndex, "写后");
             return beforeSummary + "\n" + afterSummary;
         }
         catch (Exception ex)
         {
+            if (!enableStructureSummaryDiagnostics)
+                throw;
+
             string afterSummary = SafeBuildSongDatabaseArrayStructureSummary(baseField, request.SelectedSlot.SlotIndex, "异常时当前结构");
             throw new Exception($"{ex.Message}\n{beforeSummary}\n{afterSummary}", ex);
         }
@@ -1572,7 +2384,7 @@ public static class UnitySongResourcePacker
 
     private static AssetTypeValueField UnwrapDataField(AssetTypeValueField field)
     {
-        if (field == null) return field;
+        ArgumentNullException.ThrowIfNull(field);
         return TryGetField(field, "data", out var data) ? data : field;
     }
 
@@ -2289,6 +3101,9 @@ public static class UnitySongResourcePacker
         return rgba;
     }
 
+    [DllImport("psapi.dll", SetLastError = true)]
+    private static extern bool EmptyWorkingSet(IntPtr hProcess);
+
     private static void ApplyEncodedTextureData(TextureFile texture, EncodedTextureImage data)
     {
         texture.m_Width = data.Width;
@@ -2401,6 +3216,233 @@ public static class UnitySongResourcePacker
         throw new Exception("无法写入 TextAsset 文本内容。");
     }
 
+    private static string DeployOutputsToGameDirectories(
+        string bundleSourcePath,
+        string sharedAssetsSourcePath,
+        string resourcesAssetsSourcePath,
+        string exportedBundleBackupPath,
+        string exportedSharedAssetsBackupPath,
+        string exportedResourcesAssetsBackupPath,
+        string backupDirectory,
+        IReadOnlyList<GeneratedResourceFile> generatedFiles)
+    {
+        string dataDir = Path.GetDirectoryName(sharedAssetsSourcePath)
+            ?? throw new Exception($"无法确定 sharedassets0.assets 所在目录：{sharedAssetsSourcePath}");
+        string samDir = Path.Combine(dataDir, "StreamingAssets", "sam");
+        Directory.CreateDirectory(samDir);
+
+        var lines = new List<string>();
+
+        DeployOneFileWithOriginalBackup(exportedSharedAssetsBackupPath, sharedAssetsSourcePath, lines, "sharedassets0.assets");
+        DeployOneFileWithOriginalBackup(exportedResourcesAssetsBackupPath, resourcesAssetsSourcePath, lines, "resources.assets");
+        DeployOneFileWithOriginalBackup(exportedBundleBackupPath, bundleSourcePath, lines, "歌曲数据库 bundle");
+
+        foreach (var file in generatedFiles)
+        {
+            string backupPath = Path.Combine(backupDirectory, file.MappingEntry.Guid);
+            string livePath = Path.Combine(samDir, file.MappingEntry.Guid);
+            DeployOneFileWithOriginalBackup(backupPath, livePath, lines, $"加密资源 {file.MappingEntry.FullLookupPath}");
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static void DeployOneFileWithOriginalBackup(
+        string exportedBackupPath,
+        string liveTargetPath,
+        List<string> logLines,
+        string label)
+    {
+        if (!File.Exists(exportedBackupPath))
+            throw new FileNotFoundException($"导出备份文件不存在：{exportedBackupPath}");
+
+        string? targetDir = Path.GetDirectoryName(liveTargetPath);
+        if (!string.IsNullOrWhiteSpace(targetDir))
+            Directory.CreateDirectory(targetDir);
+
+        string backupPath = liveTargetPath + "_original";
+        bool createdOriginalBackup = false;
+        if (File.Exists(liveTargetPath))
+        {
+            if (!File.Exists(backupPath))
+            {
+                File.Move(liveTargetPath, backupPath);
+                createdOriginalBackup = true;
+            }
+            else
+            {
+                File.Delete(liveTargetPath);
+            }
+        }
+
+        File.Copy(exportedBackupPath, liveTargetPath, overwrite: true);
+
+        if (createdOriginalBackup)
+        {
+            logLines.Add($"- {label}：已备份原文件 -> {backupPath}");
+        }
+        else if (File.Exists(backupPath))
+        {
+            logLines.Add($"- {label}：使用现有 *_original 备份，已覆盖写入 -> {liveTargetPath}");
+        }
+        else
+        {
+            logLines.Add($"- {label}：目标原先不存在，已写入 -> {liveTargetPath}");
+        }
+    }
+
+    public static string RestoreDeployedSongFiles(string gameRootDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(gameRootDirectory))
+            throw new ArgumentException("游戏根目录不能为空。", nameof(gameRootDirectory));
+
+        string gameRoot = Path.GetFullPath(gameRootDirectory);
+        if (!Directory.Exists(gameRoot))
+            throw new DirectoryNotFoundException($"游戏根目录不存在：{gameRoot}");
+
+        string dataDir = Path.Combine(gameRoot, "if-app_Data");
+        if (!Directory.Exists(dataDir))
+            throw new DirectoryNotFoundException($"未找到 if-app_Data：{dataDir}");
+
+        string songDataDir = Path.Combine(gameRoot, "SongData");
+        string samDir = Path.Combine(dataDir, "StreamingAssets", "sam");
+        string bundleDir = Path.Combine(dataDir, "StreamingAssets", "aa", "StandaloneWindows64");
+
+        var lines = new List<string>();
+        int restoredCount = 0;
+        int deletedCount = 0;
+        int skippedCount = 0;
+
+        // 固定文件：sharedassets0.assets / resources.assets
+        TryRestoreOneLiveFile(Path.Combine(dataDir, "sharedassets0.assets"), "sharedassets0.assets", lines, ref restoredCount, ref deletedCount, ref skippedCount);
+        TryRestoreOneLiveFile(Path.Combine(dataDir, "resources.assets"), "resources.assets", lines, ref restoredCount, ref deletedCount, ref skippedCount);
+
+        // 歌曲数据库 bundle：恢复该目录下 *_original 的 bundle（工具通常只会改一个固定 bundle）。
+        if (Directory.Exists(bundleDir))
+        {
+            foreach (var originalPath in Directory.EnumerateFiles(bundleDir, "*.bundle_original", SearchOption.TopDirectoryOnly)
+                         .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                string livePath = originalPath[..^"_original".Length];
+                TryRestoreOneLiveFile(livePath, $"歌曲数据库 bundle ({Path.GetFileName(livePath)})", lines, ref restoredCount, ref deletedCount, ref skippedCount);
+            }
+        }
+        else
+        {
+            lines.Add($"- 歌曲数据库 bundle：未找到目录，跳过 -> {bundleDir}");
+            skippedCount++;
+        }
+
+        // sam：以 SongData 备份目录中的 32 位哈希文件名为依据回滚/删除部署到 sam 的文件。
+        if (!Directory.Exists(songDataDir))
+        {
+            lines.Add($"- SongData 备份目录不存在，无法推断需清理的 sam 资源 -> {songDataDir}");
+            skippedCount++;
+        }
+        else if (!Directory.Exists(samDir))
+        {
+            lines.Add($"- sam 目录不存在，跳过清理 -> {samDir}");
+            skippedCount++;
+        }
+        else
+        {
+            var backupNames = Directory.EnumerateFiles(songDataDir, "*", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .Where(IsHexFileName32)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (backupNames.Count == 0)
+            {
+                lines.Add("- sam 清理：SongData 中未找到 32 位哈希备份文件，未执行删除。");
+                skippedCount++;
+            }
+            else
+            {
+                foreach (var name in backupNames)
+                {
+                    string livePath = Path.Combine(samDir, name!);
+                    string originalPath = livePath + "_original";
+
+                    if (File.Exists(originalPath))
+                    {
+                        if (File.Exists(livePath))
+                        {
+                            File.Delete(livePath);
+                            deletedCount++;
+                        }
+                        File.Move(originalPath, livePath, overwrite: true);
+                        restoredCount++;
+                        lines.Add($"- sam 资源 {name}：已恢复 *_original 备份。");
+                        continue;
+                    }
+
+                    if (File.Exists(livePath))
+                    {
+                        File.Delete(livePath);
+                        deletedCount++;
+                        lines.Add($"- sam 资源 {name}：已删除新增文件。");
+                    }
+                    else
+                    {
+                        skippedCount++;
+                        lines.Add($"- sam 资源 {name}：未找到，跳过。");
+                    }
+                }
+            }
+        }
+
+        lines.Insert(0, $"恢复完成：恢复 {restoredCount} 项，删除 {deletedCount} 项，跳过 {skippedCount} 项。");
+        return string.Join("\n", lines);
+    }
+
+    private static void TryRestoreOneLiveFile(
+        string livePath,
+        string label,
+        List<string> lines,
+        ref int restoredCount,
+        ref int deletedCount,
+        ref int skippedCount)
+    {
+        string originalPath = livePath + "_original";
+        bool hasOriginal = File.Exists(originalPath);
+        bool hasLive = File.Exists(livePath);
+
+        if (!hasOriginal)
+        {
+            lines.Add($"- {label}：未找到 *_original 备份，跳过。");
+            skippedCount++;
+            return;
+        }
+
+        if (hasLive)
+        {
+            File.Delete(livePath);
+            deletedCount++;
+        }
+
+        File.Move(originalPath, livePath, overwrite: true);
+        restoredCount++;
+        lines.Add($"- {label}：已恢复原文件 -> {livePath}");
+    }
+
+    private static bool IsHexFileName32(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName!.Length != 32)
+            return false;
+
+        for (int i = 0; i < fileName.Length; i++)
+        {
+            char c = fileName[i];
+            bool isHex = (c >= '0' && c <= '9') ||
+                         (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+            if (!isHex) return false;
+        }
+        return true;
+    }
+
     private static OutputPlan PrepareOutputPlan(string sourcePath, string requestedPath, bool autoRenameWhenTargetLocked)
     {
         string src = Path.GetFullPath(sourcePath);
@@ -2448,8 +3490,16 @@ public static class UnitySongResourcePacker
         if (!plan.ReplaceAfterPack) return;
         if (!File.Exists(plan.PackOutputPath))
             throw new FileNotFoundException($"临时导出文件不存在：{plan.PackOutputPath}");
-        File.Copy(plan.PackOutputPath, plan.FinalOutputPath, overwrite: true);
-        File.Delete(plan.PackOutputPath);
+        try
+        {
+            // 同盘临时文件收尾优先使用 Move，避免再次全量复制大型 bundle/assets。
+            File.Move(plan.PackOutputPath, plan.FinalOutputPath, overwrite: true);
+        }
+        catch
+        {
+            File.Copy(plan.PackOutputPath, plan.FinalOutputPath, overwrite: true);
+            File.Delete(plan.PackOutputPath);
+        }
     }
 
     private static string BuildTemporaryExportPath(string finalPath)

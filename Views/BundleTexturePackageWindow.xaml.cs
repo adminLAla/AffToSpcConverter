@@ -161,6 +161,7 @@ public partial class BundleTexturePackageWindow : Window
         }
         catch (Exception ex)
         {
+            App.LogHandledException("打包谱面-照抄已有曲目设置", ex);
             MessageBox.Show($"照抄设置失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -183,57 +184,33 @@ public partial class BundleTexturePackageWindow : Window
             sb.AppendLine(result.Summary);
             sb.AppendLine($"输出 bundle：{result.OutputBundlePath}");
             sb.AppendLine($"输出 sharedassets：{result.OutputSharedAssetsPath}");
+            sb.AppendLine($"输出 resources.assets：{result.OutputResourcesAssetsPath}");
             sb.AppendLine($"新增曲绘 Texture2D PathID：{result.NewTexturePathId}");
             sb.AppendLine($"新增曲绘 Material PathID：{result.NewMaterialPathId}");
             sb.AppendLine("新增 Mapping 项：");
             foreach (var item in result.AddedMappingEntries)
                 sb.AppendLine($"- {item.FullLookupPath} => {item.Guid} (Len={item.FileLength})");
-            sb.AppendLine(result.SongDatabaseArrayStructureDiagnostics);
-            sb.AppendLine("SongDatabase 回读校验：");
-            sb.AppendLine($"- 新歌槽位：[{result.SongDatabaseReadback.SlotIndex:00}]");
-            sb.AppendLine($"- SongId：{result.SongDatabaseReadback.SongId}");
-            sb.AppendLine($"- BaseName：{result.SongDatabaseReadback.BaseName}");
-            for (int i = 0; i < 4; i++)
+            if (!string.IsNullOrWhiteSpace(result.DeploymentSummary))
             {
-                var chart = result.SongDatabaseReadback.ChartInfos.FirstOrDefault(x => x.Index == i);
-                if (chart == null)
-                    sb.AppendLine($"- ChartInfos[{i}]：<缺失>");
-                else
-                    sb.AppendLine($"- ChartInfos[{i}]：Id={chart.Id}, Difficulty={chart.Difficulty}, Available={chart.Available}");
-            }
-            sb.AppendLine("- songIdJacketMaterials（新增相关项）：");
-            if (result.SongDatabaseReadback.SongIdJacketMaterials.Count == 0)
-            {
-                sb.AppendLine("  <未找到匹配 SongId 的条目>");
-            }
-            else
-            {
-                foreach (var item in result.SongDatabaseReadback.SongIdJacketMaterials)
-                    sb.AppendLine($"  SongId={item.SongId} -> JacketMaterial={item.FileId}:{item.PathId}");
-            }
-            sb.AppendLine("- chartIdJacketMaterials（新增相关项）：");
-            if (result.SongDatabaseReadback.ChartIdJacketMaterials.Count == 0)
-            {
-                sb.AppendLine("  <未找到匹配 BaseName 的条目>");
-            }
-            else
-            {
-                foreach (var item in result.SongDatabaseReadback.ChartIdJacketMaterials)
-                    sb.AppendLine($"  {item.ChartId} -> JacketMaterial={item.FileId}:{item.PathId}");
+                sb.AppendLine("已写入游戏目录：");
+                sb.AppendLine(result.DeploymentSummary);
             }
 
             _vm.Status = sb.ToString().TrimEnd();
 
             MessageBox.Show(
-                $"新增歌曲资源导出成功。\n\nbundle：{Path.GetFileName(result.OutputBundlePath)}\nassets：{Path.GetFileName(result.OutputSharedAssetsPath)}\n新增映射：{result.AddedMappingEntries.Count} 项",
+                $"新增歌曲资源导出成功。\n\nbundle：{Path.GetFileName(result.OutputBundlePath)}\nsharedassets：{Path.GetFileName(result.OutputSharedAssetsPath)}\nresources：{Path.GetFileName(result.OutputResourcesAssetsPath)}\n新增映射：{result.AddedMappingEntries.Count} 项",
                 "成功",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            _vm.Status = $"导出失败：{ex.Message}";
-            MessageBox.Show($"导出失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            App.LogHandledException("打包谱面-导出", ex);
+            string summary = BuildExceptionSummary(ex);
+            string details = BuildExceptionDetails(ex);
+            _vm.Status = $"导出失败：\n{details}";
+            MessageBox.Show($"导出失败：\n{summary}\n\n详细信息已写入下方状态区。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -253,7 +230,7 @@ public partial class BundleTexturePackageWindow : Window
             _bundleScan = UnitySongResourcePacker.ScanBundle(_vm.BundleFilePath);
 
             _vm.EmptySongSlots.Clear();
-            foreach (var slot in _bundleScan.Slots.Where(x => x.IsEmpty))
+            foreach (var slot in _bundleScan.Slots.Where(x => x.IsEmpty && x.SlotIndex >= 2))
                 _vm.EmptySongSlots.Add(slot);
 
             _vm.JacketTemplates.Clear();
@@ -279,11 +256,12 @@ public partial class BundleTexturePackageWindow : Window
 
             _vm.Status =
                 $"扫描完成：SongDatabase 位于 {_bundleScan.SongDatabaseAssetsFileName}，PathID={_bundleScan.SongDatabasePathId}。\n" +
-                $"总槽位 {_bundleScan.Slots.Count} 个，空槽 {_vm.EmptySongSlots.Count} 个（请手动选择）。\n" +
+                $"总槽位 {_bundleScan.Slots.Count} 个，空槽 {_vm.EmptySongSlots.Count} 个（已锁定保留槽 00/01，请手动选择）。\n" +
                 $"可用曲绘模板 {_vm.JacketTemplates.Count} 个（同名 Texture2D + Material）。";
         }
         catch (Exception ex)
         {
+            App.LogHandledException("打包谱面-扫描bundle", ex);
             _bundleScan = null;
             _vm.EmptySongSlots.Clear();
             _vm.JacketTemplates.Clear();
@@ -308,16 +286,19 @@ public partial class BundleTexturePackageWindow : Window
         {
             _vm.BundleFilePath = "";
             _vm.SharedAssetsFilePath = "";
+            _vm.ResourcesAssetsFilePath = "";
             _vm.Status = $"目录不符合预期结构：未找到 if-app_Data\n{root}";
             MessageBox.Show("未在该目录下找到 if-app_Data。\n请选择游戏根目录（例如 In Falsus Demo）。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
         string sharedAssets = Path.Combine(dataDir, "sharedassets0.assets");
+        string resourcesAssets = Path.Combine(dataDir, "resources.assets");
         string bundleDir = Path.Combine(dataDir, "StreamingAssets", "aa", "StandaloneWindows64");
         string defaultBundle = Path.Combine(bundleDir, "3d6c628d95a26a13f4e5a73be91cb4f7.bundle");
 
         _vm.SharedAssetsFilePath = File.Exists(sharedAssets) ? sharedAssets : "";
+        _vm.ResourcesAssetsFilePath = File.Exists(resourcesAssets) ? resourcesAssets : "";
         _vm.BundleFilePath = ResolveTargetSongBundlePath(bundleDir, defaultBundle) ?? "";
 
         _vm.OutputDirectory = Path.Combine(root, "SongData");
@@ -325,6 +306,8 @@ public partial class BundleTexturePackageWindow : Window
         var notes = new List<string>();
         if (!File.Exists(sharedAssets))
             notes.Add("未找到 if-app_Data\\sharedassets0.assets");
+        if (!File.Exists(resourcesAssets))
+            notes.Add("未找到 if-app_Data\\resources.assets");
         if (string.IsNullOrWhiteSpace(_vm.BundleFilePath))
             notes.Add("未找到目标歌曲数据库 bundle（默认 3d6c...bundle 及目录内 .bundle 已尝试）。");
 
@@ -420,6 +403,8 @@ public partial class BundleTexturePackageWindow : Window
             throw new Exception("请先扫描 .bundle 并选择空槽与曲绘模板。");
         if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
             throw new Exception("请先导入 sharedassets0.assets。");
+        if (string.IsNullOrWhiteSpace(_vm.ResourcesAssetsFilePath))
+            throw new Exception("请先定位 resources.assets。");
         if (string.IsNullOrWhiteSpace(_vm.JacketImageFilePath))
             throw new Exception("请先导入曲绘。");
         if (string.IsNullOrWhiteSpace(_vm.BgmFilePath))
@@ -439,6 +424,7 @@ public partial class BundleTexturePackageWindow : Window
         {
             BundleFilePath = _vm.BundleFilePath,
             SharedAssetsFilePath = _vm.SharedAssetsFilePath,
+            ResourcesAssetsFilePath = _vm.ResourcesAssetsFilePath,
             OutputDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory)
                 ? Path.Combine(_vm.GameDirectory, "SongData")
                 : _vm.OutputDirectory,
@@ -452,6 +438,8 @@ public partial class BundleTexturePackageWindow : Window
             PreviewEndSeconds = _vm.PreviewEndSeconds,
             DisplayNameSectionIndicator = _vm.DisplayNameSectionIndicator ?? "",
             DisplayArtistSectionIndicator = _vm.DisplayArtistSectionIndicator ?? "",
+            SongTitleEnglish = (_vm.SongTitleEnglish ?? "").Trim(),
+            SongArtistEnglish = (_vm.SongArtistEnglish ?? "").Trim(),
             GameplayBackground = _vm.GameplayBackground,
             RewardStyle = _vm.RewardStyle,
             Charts = charts,
@@ -517,6 +505,65 @@ public partial class BundleTexturePackageWindow : Window
             if (!used.Contains(i)) return i;
         }
         return 0;
+    }
+
+    // 构建适合 MessageBox 展示的异常摘要（类型 + 消息 + 第一层内部异常 + 首帧堆栈）。
+    private static string BuildExceptionSummary(Exception ex)
+    {
+        var sb = new StringBuilder();
+        sb.Append(ex.GetType().Name);
+        if (!string.IsNullOrWhiteSpace(ex.Message))
+            sb.Append(": ").Append(ex.Message);
+
+        if (ex.InnerException != null)
+        {
+            sb.Append("\nInner: ").Append(ex.InnerException.GetType().Name);
+            if (!string.IsNullOrWhiteSpace(ex.InnerException.Message))
+                sb.Append(": ").Append(ex.InnerException.Message);
+        }
+
+        string? firstStack = ex.StackTrace?
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(firstStack))
+            sb.Append("\n").Append(firstStack);
+
+        return sb.ToString();
+    }
+
+    // 构建详细异常文本，写入状态区便于截图定位。
+    private static string BuildExceptionDetails(Exception ex)
+    {
+        var sb = new StringBuilder();
+        int depth = 0;
+        for (Exception? cur = ex; cur != null; cur = cur.InnerException, depth++)
+        {
+            if (depth > 0)
+                sb.AppendLine().AppendLine("---- Inner Exception ----");
+
+            sb.AppendLine($"{cur.GetType().FullName}: {cur.Message}");
+
+            var stackLines = cur.StackTrace?
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Take(16);
+            if (stackLines != null)
+            {
+                bool any = false;
+                foreach (var line in stackLines)
+                {
+                    if (!any)
+                    {
+                        sb.AppendLine("Stack:");
+                        any = true;
+                    }
+                    sb.AppendLine(line);
+                }
+            }
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
 }

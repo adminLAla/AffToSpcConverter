@@ -16,6 +16,7 @@
             </MenuItem>
             <MenuItem Header="打包(_P)">
                 <MenuItem Header="打包谱面..." Click="MenuPackageBundleTexture_Click"/>
+                <MenuItem Header="恢复文件..." Click="MenuRestoreSongPackedFiles_Click"/>
             </MenuItem>
             <MenuItem Header="选项(_O)">
                 <MenuItem Header="推荐键位映射 (4轨→5轨)"
@@ -26,7 +27,7 @@
                 <MenuItem Header="设置..." Click="MenuSettings_Click"/>
             </MenuItem>
             <MenuItem Header="工具(_T)">
-                <MenuItem Header="生成报告..." Click="MenuReport_Click"/>
+                <MenuItem Header="统计信息..." Click="MenuReport_Click"/>
             </MenuItem>
             <!-- 可视化预览切换按钮移至菜单栏 -->
             <MenuItem Header="视图(_V)">

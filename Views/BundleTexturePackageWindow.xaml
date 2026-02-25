@@ -20,6 +20,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="120"/>
@@ -39,16 +40,20 @@
                         <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SharedAssetsFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
                         <Button Grid.Row="2" Grid.Column="2" Content="重新定位" Click="BtnBrowseGameDirectory_Click" Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="导入曲绘：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding JacketImageFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="3" Grid.Column="2" Content="导入曲绘" Click="BtnBrowseJacket_Click" Margin="0,0,0,6"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="resources.assets：" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding ResourcesAssetsFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
+                        <Button Grid.Row="3" Grid.Column="2" Content="重新定位" Click="BtnBrowseGameDirectory_Click" Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="导入 BGM：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding BgmFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="4" Grid.Column="2" Content="导入BGM" Click="BtnBrowseBgm_Click" Margin="0,0,0,6"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="导入曲绘：" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding JacketImageFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
+                        <Button Grid.Row="4" Grid.Column="2" Content="导入曲绘" Click="BtnBrowseJacket_Click" Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="输出目录(自动)：" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2"
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="导入 BGM：" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                        <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding BgmFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
+                        <Button Grid.Row="5" Grid.Column="2" Content="导入BGM" Click="BtnBrowseBgm_Click" Margin="0,0,0,6"/>
+
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="输出目录(自动)：" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2"
                                  Text="{Binding OutputDirectory}" IsReadOnly="True" Margin="0,0,0,0"
                                  ToolTip="固定输出到游戏根目录下的 SongData 文件夹。"/>
                     </Grid>
@@ -80,12 +85,18 @@
                                   DisplayMemberPath="DisplayText"
                                   Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="曲绘模板：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <ComboBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
-                                  ItemsSource="{Binding JacketTemplates}"
-                                  SelectedItem="{Binding SelectedJacketTemplate}"
-                                  DisplayMemberPath="DisplayText"
-                                  Margin="0,0,0,6"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="曲绘模板：" VerticalAlignment="Center" Margin="0,0,8,2"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,6">
+                            <CheckBox Margin="0,0,0,4"
+                                      IsChecked="{Binding ManualJacketTemplateSelection}"
+                                      Content="高级模式：手动切换曲绘模板"
+                                      ToolTip="默认自动使用扫描结果中的曲绘模板；仅在需要指定其他模板时开启手动切换。"/>
+                            <ComboBox ItemsSource="{Binding JacketTemplates}"
+                                      SelectedItem="{Binding SelectedJacketTemplate}"
+                                      DisplayMemberPath="DisplayText"
+                                      IsEnabled="{Binding ManualJacketTemplateSelection}"
+                                      ToolTip="默认由程序自动选择；开启上方高级模式后可手动切换。"/>
+                        </StackPanel>
 
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="试听区间(秒)：" VerticalAlignment="Center" Margin="0,0,8,6"/>
                         <StackPanel Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,6">
@@ -101,6 +112,27 @@
                                   ToolTip="开启后按导入曲绘原始宽高写入 Texture2D，并优先尝试原格式/BC7 编码；若都失败才回退 RGBA32。"/>
 
                         <Button Grid.Row="5" Grid.Column="2" Content="扫描.bundle" Click="BtnRescanBundle_Click"/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="显示文本（resources.assets / DynamicStringMapping）" Margin="0,0,0,8">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="曲名(English)：" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                        <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding SongTitleEnglish}" Margin="0,0,0,6"
+                                 ToolTip="写入 resources.assets / DynamicStringMapping 的 songIdTitleTypeMapping（仅 English 字段）。"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="曲师(English)：" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SongArtistEnglish}" Margin="0,0,0,0"
+                                 ToolTip="写入 resources.assets / DynamicStringMapping 的 songIdArtistTypeMapping（仅 English 字段）。"/>
                     </Grid>
                 </GroupBox>
 

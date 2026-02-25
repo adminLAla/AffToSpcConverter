@@ -44,7 +44,9 @@ public class GameAssetPacker
         string ext = Path.GetExtension(sourceFilePath).ToLowerInvariant();
         if (ext == ".txt" && sourceBytes.Length >= 3 && sourceBytes[0] == 0xEF && sourceBytes[1] == 0xBB && sourceBytes[2] == 0xBF)
         {
-            sourceBytes = sourceBytes.Skip(3).ToArray();
+            var trimmed = new byte[sourceBytes.Length - 3];
+            Buffer.BlockCopy(sourceBytes, 3, trimmed, 0, trimmed.Length);
+            sourceBytes = trimmed;
         }
 
         // 6. 使用 XTS 模式加密数据。
@@ -63,7 +65,11 @@ public class GameAssetPacker
         byte[] sourceBytes = File.ReadAllBytes(sourceFilePath);
         string ext = Path.GetExtension(sourceFilePath).ToLowerInvariant();
         if (ext == ".txt" && sourceBytes.Length >= 3 && sourceBytes[0] == 0xEF && sourceBytes[1] == 0xBB && sourceBytes[2] == 0xBF)
-            return sourceBytes.Skip(3).ToArray();
+        {
+            var trimmed = new byte[sourceBytes.Length - 3];
+            Buffer.BlockCopy(sourceBytes, 3, trimmed, 0, trimmed.Length);
+            return trimmed;
+        }
 
         return sourceBytes;
     }
