@@ -5,6 +5,7 @@ using AffToSpcConverter.Models;
 
 namespace AffToSpcConverter.Convert.Preview
 {
+    // 预览渲染模型构建器，把 SPC 事件转成可绘制的时间轴元素。
     public static class SpcRenderModelBuilder
     {
         // 构建预览渲染模型。

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 
 namespace AffToSpcConverter.ViewModels;
 
+// 打包加密资源窗口的 ViewModel。
 public class PackageViewModel : INotifyPropertyChanged
 {
     private string _sourceFilePath = "";

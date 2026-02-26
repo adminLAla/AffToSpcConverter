@@ -6,6 +6,7 @@ namespace AffToSpcConverter.Convert.Preview
 {
     public enum RenderItemType { GroundTap, GroundHold, SkyFlick, SkyArea }
 
+    // 单个渲染元素的数据结构，描述预览中的一个可绘制对象。
     public sealed class RenderItem
     {
         public RenderItemType Type { get; init; }
@@ -30,6 +31,7 @@ namespace AffToSpcConverter.Convert.Preview
         public int SourceIndex { get; init; } = -1;
     }
 
+    // 预览渲染模型，包含已排序的渲染元素与时间范围信息。
     public sealed class RenderModel
     {
         public double Bpm { get; set; }

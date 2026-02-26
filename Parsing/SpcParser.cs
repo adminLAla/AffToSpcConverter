@@ -5,6 +5,7 @@ using System.Globalization;
 
 namespace AffToSpcConverter.Parsing;
 
+// SPC 文本解析器，负责把 .spc 文本解析为事件对象集合。
 public static class SpcParser
 {
     // 解析输入文本并生成Spc数据模型。

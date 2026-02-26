@@ -11,8 +11,10 @@ using Microsoft.Win32;
 
 namespace AffToSpcConverter.Views;
 
+// “打包谱面”窗口，负责新增歌曲资源的收集、校验与导出。
 public partial class BundleTexturePackageWindow : Window
 {
+    private const int MaxChartRowCount = 4;
     private readonly BundleTexturePackageViewModel _vm = new();
     private SongBundleScanResult? _bundleScan;
 
@@ -54,7 +56,7 @@ public partial class BundleTexturePackageWindow : Window
         _vm.Status = "已导入曲绘图片。导出时会自动写入新增 Texture2D。";
     }
 
-    // 选择新增歌曲 BGM（.ogg/.wav），映射扩展名会跟随源文件。
+    // 选择新增歌曲 BGM（.ogg/.wav），导出时会按游戏约定写入 .wav 映射键。
     private void BtnBrowseBgm_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
@@ -65,7 +67,7 @@ public partial class BundleTexturePackageWindow : Window
         if (dialog.ShowDialog() != true) return;
 
         _vm.BgmFilePath = dialog.FileName;
-        _vm.Status = $"已导入 BGM：{Path.GetFileName(dialog.FileName)}（映射扩展名将跟随源文件）。";
+        _vm.Status = $"已导入 BGM：{Path.GetFileName(dialog.FileName)}（导出时会使用 .wav 映射键）。";
     }
 
     // 旧版手动选择导出目录入口（当前流程固定输出到游戏根目录\SongData，保留方法以兼容旧 XAML 事件名）。
@@ -84,6 +86,12 @@ public partial class BundleTexturePackageWindow : Window
     // 添加一条 ChartInfo 配置行（对应一个谱面分档）。
     private void BtnAddChartRow_Click(object sender, RoutedEventArgs e)
     {
+        if (_vm.ChartRows.Count >= MaxChartRowCount)
+        {
+            MessageBox.Show($"谱面项最多只能添加 {MaxChartRowCount} 个。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var row = CreateDefaultChartRow();
         _vm.ChartRows.Add(row);
         _vm.SelectedChartRow = row;
@@ -399,6 +407,9 @@ public partial class BundleTexturePackageWindow : Window
     // 根据当前界面输入构造后端导出请求。
     private NewSongPackRequest BuildRequestFromUi()
     {
+        if (_vm.ChartRows.Count > MaxChartRowCount)
+            throw new Exception($"谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
+
         if (_bundleScan == null)
             throw new Exception("请先扫描 .bundle 并选择空槽与曲绘模板。");
         if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
@@ -417,6 +428,8 @@ public partial class BundleTexturePackageWindow : Window
             throw new Exception("请选择一个曲绘模板。");
 
         var charts = BuildChartItemsFromRows();
+        if (charts.Count > MaxChartRowCount)
+            throw new Exception($"启用的谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
         if (charts.Count == 0)
             throw new Exception("请至少启用并配置一个谱面项。");
 

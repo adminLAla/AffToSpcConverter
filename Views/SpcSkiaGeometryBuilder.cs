@@ -5,6 +5,7 @@ using SkiaSharp;
 
 namespace AffToSpcConverter.Views
 {
+    // Skia 预览几何构建器，生成 SKPath/SKPoint 等绘制数据。
     public static class SpcSkiaGeometryBuilder
     {
         private const int MaxSkyAreaCacheEntries = 512;

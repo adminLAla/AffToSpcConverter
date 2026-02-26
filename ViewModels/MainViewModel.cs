@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 
 namespace AffToSpcConverter.ViewModels;
 
+// 主窗口 ViewModel，负责转换、预览、设置与状态绑定。
 public class MainViewModel : INotifyPropertyChanged
 {
     private const double PreviewMinPixelsPerSecond = 500.0;

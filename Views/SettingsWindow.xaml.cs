@@ -2,6 +2,7 @@
 
 namespace AffToSpcConverter.Views;
 
+// 设置窗口，管理预览与编辑相关的用户配置项。
 public partial class SettingsWindow : Window
 {
     // 初始化设置窗口。

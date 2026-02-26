@@ -6,6 +6,7 @@ using AffToSpcConverter.Convert.Preview;
 
 namespace AffToSpcConverter.Views
 {
+    // 预览几何构建器（基础版），生成预览绘制所需的几何信息。
     public static class SpcGeometryBuilder
     {
         // 构建 Flick 的 WPF 几何轮廓。

@@ -15,8 +15,10 @@
                 <MenuItem Header="退出(_X)" Click="MenuExit_Click"/>
             </MenuItem>
             <MenuItem Header="打包(_P)">
-                <MenuItem Header="打包谱面..." Click="MenuPackageBundleTexture_Click"/>
-                <MenuItem Header="恢复文件..." Click="MenuRestoreSongPackedFiles_Click"/>
+                <MenuItem Header="打包谱面..." Click="MenuPackageBundleTexture_Click"
+                          ToolTip="打开“打包谱面”窗口，用于新增歌曲资源并写入游戏目录。"/>
+                <MenuItem Header="恢复文件..." Click="MenuRestoreSongPackedFiles_Click"
+                          ToolTip="请选择游戏根目录，用于回滚 *_original 备份并清理 sam 新增资源。"/>
             </MenuItem>
             <MenuItem Header="选项(_O)">
                 <MenuItem Header="推荐键位映射 (4轨→5轨)"

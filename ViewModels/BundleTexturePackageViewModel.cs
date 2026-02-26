@@ -5,6 +5,7 @@ using AffToSpcConverter.Utils;
 
 namespace AffToSpcConverter.ViewModels;
 
+// “打包谱面”窗口中的单条谱面分档行 ViewModel。
 public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChanged
 {
     private bool _enabled;
@@ -35,10 +36,12 @@ public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChang
     public string ChartFilePath { get => _chartFilePath; set { if (_chartFilePath == value) return; _chartFilePath = value; OnPropertyChanged(); } }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    // 处理 Property Changed 相关事件。
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
+// “打包谱面”窗口总 ViewModel，保存表单输入、扫描结果与导出状态。
 public class BundleTexturePackageViewModel : INotifyPropertyChanged
 {
     private string _gameDirectory = "";
@@ -131,6 +134,7 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    // 处理 Property Changed 相关事件。
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

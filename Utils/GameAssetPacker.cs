@@ -8,6 +8,7 @@ using System.Collections.Generic;
 
 namespace AffToSpcConverter.Utils;
 
+// 游戏资源加密打包器，用于按映射表替换并输出加密资源文件。
 public class GameAssetPacker
 {
     // 游戏资源加密使用的固定数据密钥与 tweak 密钥。
@@ -371,6 +372,8 @@ public class GameAssetPacker
         return false;
     }
 
+    // StreamingAssetsMapping.json 的根对象（仅保留本工具需要的字段）。
     private class MappingData { public List<MappingEntry>? Entries { get; set; } }
+    // 单条映射项（仅使用 Guid 与 FullLookupPath）。
     private class MappingEntry { public string? Guid { get; set; } public string? FullLookupPath { get; set; } }
 }

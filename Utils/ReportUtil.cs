@@ -6,6 +6,7 @@ using System.Text;
 
 namespace AffToSpcConverter.Utils;
 
+// 统计信息生成器，用于从 SPC 文本和当前状态生成摘要报告。
 public static class ReportUtil
 {
     // 生成转换结果的简要统计报告。
@@ -39,7 +40,7 @@ public static class ReportUtil
         var (chartBpm, chartBeats) = ParseChart();
 
         var sb = new StringBuilder();
-        sb.AppendLine("=== Report ===");
+        sb.AppendLine("=== 统计概览 ===");
         sb.AppendLine($"chart: {Count("chart(")}");
         sb.AppendLine($"bpm-events: {Count("bpm(")}"); // 若以后增加 bpm(time,bpm,beats)，这里也能统计
         sb.AppendLine($"chart.bpm: {(chartBpm.HasValue ? chartBpm.Value.ToString("0.00", CultureInfo.InvariantCulture) : "N/A")}");
@@ -51,15 +52,29 @@ public static class ReportUtil
         sb.AppendLine($"flick: {Count("flick(")}");
         sb.AppendLine();
 
-        sb.AppendLine("=== Options ===");
-        sb.AppendLine($"Denominator={vm.Denominator}");
-        sb.AppendLine($"SkyWidthRatio={vm.SkyWidthRatio}");
-        sb.AppendLine($"XMapping={vm.XMapping}");
-        sb.AppendLine($"RecommendedKeymap={vm.RecommendedKeymap}");
-        sb.AppendLine($"DisableLanes={vm.DisableLanes}");
-        sb.AppendLine($"TapWidthPatternEnabled={vm.TapWidthPatternEnabled}, Pattern={vm.TapWidthPattern}, DenseT={vm.DenseTapThresholdMs}");
-        sb.AppendLine($"HoldWidthRandomEnabled={vm.HoldWidthRandomEnabled}, Max={vm.HoldWidthRandomMax}, Seed={vm.RandomSeed}");
-        sb.AppendLine($"SkyareaStrategy2={vm.SkyareaStrategy2}");
+        sb.AppendLine("=== 配置参数（规则设置）===");
+        sb.AppendLine("[基础参数]");
+        sb.AppendLine($"分母（Denominator）={vm.Denominator}");
+        sb.AppendLine($"Sky 宽度比例（SkyWidthRatio）={vm.SkyWidthRatio}");
+        sb.AppendLine($"X 坐标映射（XMapping）={vm.XMapping}");
+        sb.AppendLine();
+
+        sb.AppendLine("[选项菜单]");
+        sb.AppendLine($"推荐键位映射 (4轨→5轨)（RecommendedKeymap）={vm.RecommendedKeymap}");
+        sb.AppendLine($"禁用轨道 (0 & 4)（DisableLanes）={vm.DisableLanes}");
+        sb.AppendLine();
+
+        sb.AppendLine("[难度 / 混音（可选）]");
+        sb.AppendLine($"启用 Tap 宽度样式（TapWidthPatternEnabled）={vm.TapWidthPatternEnabled}");
+        sb.AppendLine($"样式（TapWidthPattern）={vm.TapWidthPattern}");
+        sb.AppendLine($"密集阻值（DenseTapThresholdMs）={vm.DenseTapThresholdMs}");
+        sb.AppendLine($"随机化 Hold 宽度（HoldWidthRandomEnabled）={vm.HoldWidthRandomEnabled}");
+        sb.AppendLine($"最大 Hold 宽度（HoldWidthRandomMax）={vm.HoldWidthRandomMax}");
+        sb.AppendLine($"随机稿子（RandomSeed）={vm.RandomSeed}");
+        sb.AppendLine();
+
+        sb.AppendLine("[天空（可选）]");
+        sb.AppendLine($"SkyArea 第二策略（表现型）（SkyareaStrategy2）={vm.SkyareaStrategy2}");
 
         return sb.ToString();
     }

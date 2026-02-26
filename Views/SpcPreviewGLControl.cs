@@ -14,10 +14,13 @@ using SkiaSharp.Views.WPF;
 
 namespace AffToSpcConverter.Views
 {
+    // 预览视图模式（分离视图/合并视图）。
     public enum PreviewViewMode { Split, Merged }
 
+    // 预览中支持新增的音符类型。
     public enum AddNoteType { Tap, Hold, Flick, SkyArea }
 
+    // 新增音符参数模板，描述用户准备放置的音符配置。
     public sealed class AddNoteRequest
     {
         // 待放置音符的类型。
@@ -40,6 +43,7 @@ namespace AffToSpcConverter.Views
         public int GroupId { get; init; } = 1;
     }
 
+    // 一次新增音符放置操作的落点结果（时间与位置）。
     public sealed record AddNotePlacement(
         // 本次放置时使用的参数模板。
         AddNoteRequest Request,
@@ -58,6 +62,7 @@ namespace AffToSpcConverter.Views
     // 高性能 Skia 预览控件，支持分离视图与合并叠加视图。
 
 
+    // SPC 可视化预览控件，负责渲染、选中、编辑交互与播放同步显示。
     public sealed class SpcPreviewGLControl : SKElement, IDisposable
     {
         // ===== 渲染循环 =====
@@ -83,22 +88,8 @@ namespace AffToSpcConverter.Views
         private double _frameTimeSmoothed;
         // 上一帧的时间戳，用于计算帧时长。
         private long _prevFrameTick;
-        // 最近统计窗口内的 P95 帧时长（毫秒）。
-        private double _frameTimeP95;
-        // 最近统计窗口内的 P99 帧时长（毫秒）。
-        private double _frameTimeP99;
         // FPS 统计采样窗口时长（毫秒）。
         private const int FpsSampleMs = 100;
-        // 帧时长分位统计的环形缓冲区容量。
-        private const int FrameStatsCapacity = 512;
-        // 最近帧时长样本环形缓冲区（毫秒）。
-        private readonly double[] _frameTimeSamples = new double[FrameStatsCapacity];
-        // 下一个写入帧时长样本的位置。
-        private int _frameTimeSampleWriteIndex;
-        // 当前有效帧时长样本数量。
-        private int _frameTimeSampleCount;
-        // 计算分位数时复用的排序缓冲区，避免重复分配。
-        private readonly double[] _frameTimePercentileScratch = new double[FrameStatsCapacity];
 
         // ===== 渲染快照 =====
         // 供渲染线程读取的判定时间快照（double 按 long 位存储）。
@@ -1104,7 +1095,6 @@ namespace AffToSpcConverter.Views
             long nowTick = Stopwatch.GetTimestamp();
             double thisFrameMs = (nowTick - _prevFrameTick) * 1000.0 / Stopwatch.Frequency;
             _prevFrameTick = nowTick;
-            RecordFrameTimeSample(thisFrameMs);
             if (_frameTimeSmoothed <= 0) _frameTimeSmoothed = thisFrameMs;
             else _frameTimeSmoothed = _frameTimeSmoothed * 0.85 + thisFrameMs * 0.15;
 
@@ -1113,7 +1103,6 @@ namespace AffToSpcConverter.Views
             if (elapsedSample >= FpsSampleMs)
             {
                 _fps = (int)Math.Round(_frameCount * 1000.0 / Math.Max(1, elapsedSample));
-                ComputeFrameTimePercentiles();
                 _frameCount = 0;
                 _lastFpsTick = nowTick;
             }
@@ -1584,70 +1573,24 @@ namespace AffToSpcConverter.Views
         // ===== 帧率显示 =====
         // 上次生成的 FPS 文本，键值未变化时直接复用字符串。
         private string _lastStatsStr = "";
-        // FPS 文本缓存键（由 FPS/ft/P95/P99 与 VSync 状态拼接生成）。
+        // FPS 文本缓存键（由 FPS/ft 与 VSync 状态拼接生成）。
         private long _lastStatsKey = -1;
-
-        // 将一帧的耗时写入环形缓冲区，供分位统计使用。
-        private void RecordFrameTimeSample(double frameMs)
-        {
-            if (frameMs <= 0 || double.IsNaN(frameMs) || double.IsInfinity(frameMs))
-                return;
-
-            _frameTimeSamples[_frameTimeSampleWriteIndex] = frameMs;
-            _frameTimeSampleWriteIndex = (_frameTimeSampleWriteIndex + 1) % FrameStatsCapacity;
-            if (_frameTimeSampleCount < FrameStatsCapacity)
-                _frameTimeSampleCount++;
-        }
-
-        // 根据最近帧时长样本计算 P95 / P99。
-        private void ComputeFrameTimePercentiles()
-        {
-            int count = _frameTimeSampleCount;
-            if (count <= 0)
-            {
-                _frameTimeP95 = 0;
-                _frameTimeP99 = 0;
-                return;
-            }
-
-            Array.Copy(_frameTimeSamples, _frameTimePercentileScratch, count);
-            Array.Sort(_frameTimePercentileScratch, 0, count);
-            _frameTimeP95 = GetPercentileFromSorted(_frameTimePercentileScratch, count, 0.95);
-            _frameTimeP99 = GetPercentileFromSorted(_frameTimePercentileScratch, count, 0.99);
-        }
-
-        // 从已排序样本中读取指定分位值（线性插值）。
-        private static double GetPercentileFromSorted(double[] sorted, int count, double percentile)
-        {
-            if (count <= 0) return 0;
-            if (count == 1) return sorted[0];
-
-            double pos = Math.Clamp(percentile, 0.0, 1.0) * (count - 1);
-            int lo = (int)Math.Floor(pos);
-            int hi = Math.Min(count - 1, lo + 1);
-            double t = pos - lo;
-            return sorted[lo] + (sorted[hi] - sorted[lo]) * t;
-        }
 
         // 在右上角绘制 FPS 与帧时长统计信息。
         private void PaintFps(SKCanvas canvas, float w)
         {
             int fps = _fps;
             int ftX10 = (int)Math.Round(_frameTimeSmoothed * 10.0);
-            int p95X10 = (int)Math.Round(_frameTimeP95 * 10.0);
-            int p99X10 = (int)Math.Round(_frameTimeP99 * 10.0);
             long key =
                 (((long)(UseVsync ? 1 : 0) & 0x1) << 60) |
                 (((long)fps & 0xFFFF) << 44) |
-                (((long)ftX10 & 0x3FFF) << 30) |
-                (((long)p95X10 & 0x3FFF) << 16) |
-                ((long)p99X10 & 0xFFFF);
+                (((long)ftX10 & 0x3FFF) << 30);
             if (key != _lastStatsKey)
             {
                 _lastStatsKey = key;
-                _lastStatsStr = $"{(UseVsync ? "VSync " : "")}FPS:{fps}  ft:{_frameTimeSmoothed:0.0}ms  P95:{_frameTimeP95:0.0}  P99:{_frameTimeP99:0.0}";
+                _lastStatsStr = $"{(UseVsync ? "VSync " : "")}FPS:{fps}  ft:{_frameTimeSmoothed:0.0}ms";
             }
-            DrawText(canvas, _lastStatsStr, Math.Max(4, w - 460), 10, FpsPaint);
+            DrawText(canvas, _lastStatsStr, Math.Max(4, w - 260), 10, FpsPaint);
         }
 
         // 按左上对齐方式在画布指定位置绘制文本。

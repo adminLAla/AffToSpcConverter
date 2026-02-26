@@ -5,6 +5,7 @@ using System.Linq;
 
 namespace AffToSpcConverter.Utils;
 
+// 谱面模式工具，生成或处理常见的音符分布模式。
 public static class PatternUtils
 {
     // 根据 BPM 计算默认密集段阈值。

@@ -2,6 +2,7 @@ using System.Windows;
 
 namespace AffToSpcConverter.Views;
 
+// 自定义映射窗口，用于查看和编辑转换映射配置。
 public partial class CustomMappingWindow : Window
 {
     // 初始化自定义映射窗口。

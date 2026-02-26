@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -14,6 +14,7 @@ using AssetsTools.NET.Texture;
 
 namespace AffToSpcConverter.Utils;
 
+// bundle 中单个 Texture2D 的显示与定位信息。
 public sealed class BundleTextureEntry
 {
     // bundle 内部 assets 文件索引（用于写回定位）。
@@ -50,6 +51,7 @@ public sealed class BundleTextureEntry
     public override string ToString() => DisplayText;
 }
 
+// Texture2D 替换导出的结果摘要（路径、格式、回读校验等）。
 public sealed class BundleTextureExportResult
 {
     // 导出后的 bundle 完整路径。
@@ -95,6 +97,7 @@ public sealed class BundleTextureExportResult
     public required string ReadbackSummary { get; init; }
 }
 
+// Unity 未加密 bundle 的 Texture2D 替换工具。
 public static class UnityBundleTexturePacker
 {
     // 读取未加密 Unity bundle 中所有 Texture2D，供用户选择替换目标。
@@ -1064,6 +1067,7 @@ public static class UnityBundleTexturePacker
     [DllImport("psapi.dll", SetLastError = true)]
     private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
+    // 导入图片的预处理结果（原始 PNG + BGRA 像素缓冲）。
     private sealed class PreparedImage
     {
         public required byte[] PngBytes { get; set; }
@@ -1073,6 +1077,7 @@ public static class UnityBundleTexturePacker
         public required bool WasConvertedFromJpeg { get; init; }
         public required bool WasResized { get; init; }
 
+        // 释放Heavy 缓冲区。
         public void ReleaseHeavyBuffers()
         {
             PngBytes = Array.Empty<byte>();
@@ -1080,6 +1085,7 @@ public static class UnityBundleTexturePacker
         }
     }
 
+    // 编码后可写入 Texture2D 的纹理数据与格式信息。
     private sealed class EncodedTextureImage
     {
         public required byte[] EncodedBytes { get; set; }
@@ -1093,6 +1099,7 @@ public static class UnityBundleTexturePacker
         public void ReleaseEncodedBytes() => EncodedBytes = Array.Empty<byte>();
     }
 
+    // 导出路径规划结果（目标路径、临时路径、覆盖策略）。
     private sealed class OutputPlan
     {
         public required string RequestedOutputPath { get; init; }
@@ -1102,14 +1109,17 @@ public static class UnityBundleTexturePacker
         public required bool AutoRenamedDueToLock { get; init; }
     }
 
+    // 导出后回读校验结果。
     private sealed class ReadbackVerificationResult
     {
         public required bool Verified { get; init; }
         public required string Summary { get; init; }
 
+        // 创建成功结果实例。
         public static ReadbackVerificationResult Ok(string summary) =>
             new() { Verified = true, Summary = summary };
 
+        // 创建失败结果实例。
         public static ReadbackVerificationResult Fail(string summary) =>
             new() { Verified = false, Summary = summary };
     }

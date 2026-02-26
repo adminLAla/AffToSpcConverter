@@ -7,6 +7,7 @@ using System.Linq;
 
 namespace AffToSpcConverter.Utils;
 
+// SPC 合法性校验结果，区分 Error 与 Warning 两级。
 public sealed class SpcValidationReport
 {
     public List<string> Errors { get; } = new();
@@ -14,8 +15,10 @@ public sealed class SpcValidationReport
     public bool HasErrors => Errors.Count > 0;
 }
 
+// SPC 合法性校验工具，提供保存前校验与转换后提示检查。
 public static class ValidationUtil
 {
+    // 解析成功的事件与其来源行号，用于后续语义级校验。
     private sealed record ParsedSpcEvent(ISpcEvent Event, int LineNo);
 
     // 兼容旧调用：仅输出 Warning 级别校验结果（转换后提示用）。

@@ -17,6 +17,7 @@ using AssetsTools.NET.Texture;
 
 namespace AffToSpcConverter.Utils;
 
+// SongDatabase 中单个歌曲槽位的扫描结果信息。
 public sealed class SongDatabaseSlotInfo
 {
     public required int SlotIndex { get; init; }
@@ -32,6 +33,7 @@ public sealed class SongDatabaseSlotInfo
     public override string ToString() => DisplayText;
 }
 
+// 可用于复制曲绘资源的模板候选（Texture2D + Material 成对资源）。
 public sealed class JacketTemplateCandidate
 {
     public required int BundleFileIndex { get; init; }
@@ -45,6 +47,7 @@ public sealed class JacketTemplateCandidate
     public override string ToString() => DisplayText;
 }
 
+// .bundle 扫描结果，包含 SongDatabase 定位与曲绘模板列表。
 public sealed class SongBundleScanResult
 {
     public required string BundleFilePath { get; init; }
@@ -55,6 +58,7 @@ public sealed class SongBundleScanResult
     public required IReadOnlyList<JacketTemplateCandidate> JacketTemplates { get; init; }
 }
 
+// 新增歌曲的一条谱面分档输入项。
 public sealed class NewSongChartPackItem
 {
     public required int ChartSlotIndex { get; init; }
@@ -67,6 +71,7 @@ public sealed class NewSongChartPackItem
     public required string DisplayJacketDesigner { get; init; }
 }
 
+// 新增歌曲打包请求，汇总 UI 收集的全部导出参数。
 public sealed class NewSongPackRequest
 {
     public required string BundleFilePath { get; init; }
@@ -91,6 +96,7 @@ public sealed class NewSongPackRequest
     public bool AutoRenameWhenTargetLocked { get; init; } = true;
 }
 
+// 新增写入到 StreamingAssetsMapping 的单条映射结果。
 public sealed class NewSongMappingEntryResult
 {
     public required string FullLookupPath { get; init; }
@@ -98,6 +104,7 @@ public sealed class NewSongMappingEntryResult
     public required int FileLength { get; init; }
 }
 
+// 新增歌曲导出结果，包含输出文件路径、映射项与部署摘要。
 public sealed class NewSongPackExportResult
 {
     public required string OutputBundlePath { get; init; }
@@ -112,8 +119,10 @@ public sealed class NewSongPackExportResult
     public required string Summary { get; init; }
 }
 
+// SongDatabase 回读校验结果（开发调试用）。
 public sealed class SongDatabaseReadbackValidationResult
 {
+    // SongDatabase 回读时提取的 ChartInfos 条目摘要。
     public sealed class ChartInfo
     {
         public required int Index { get; init; }
@@ -122,6 +131,7 @@ public sealed class SongDatabaseReadbackValidationResult
         public required int Available { get; init; }
     }
 
+    // songIdJacketMaterials 条目摘要。
     public sealed class SongIdJacketMaterialEntry
     {
         public required int SongId { get; init; }
@@ -129,6 +139,7 @@ public sealed class SongDatabaseReadbackValidationResult
         public required long PathId { get; init; }
     }
 
+    // chartIdJacketMaterials 条目摘要。
     public sealed class ChartIdJacketMaterialEntry
     {
         public required string ChartId { get; init; }
@@ -144,18 +155,21 @@ public sealed class SongDatabaseReadbackValidationResult
     public required IReadOnlyList<ChartIdJacketMaterialEntry> ChartIdJacketMaterials { get; init; }
 }
 
+// 新增歌曲资源打包器：修改 SongDatabase、Mapping、DynamicStringMapping 并部署文件。
 public static class UnitySongResourcePacker
 {
     // 当前 In Falsus Demo（Unity 6000.3.2f1）中 DynamicStringMapping 在 resources.assets 的稳定 PathID。
     // 若后续版本变动，代码会回退到名称扫描逻辑。
     private const long KnownDynamicStringMappingPathId = 1375;
 
+    // 待生成的加密资源文件（含映射项与明文字节）。
     private sealed class GeneratedResourceFile
     {
         public required NewSongMappingEntryResult MappingEntry { get; init; }
         public required byte[] PlainBytes { get; init; }
     }
 
+    // 导出文件路径规划结果（请求路径、最终路径、临时路径）。
     private sealed class OutputPlan
     {
         public required string RequestedOutputPath { get; init; }
@@ -165,6 +179,7 @@ public static class UnitySongResourcePacker
         public required bool AutoRenamedDueToLock { get; init; }
     }
 
+    // 曲绘图片预处理结果（PNG/BGRA 缓冲与尺寸信息）。
     private sealed class PreparedImage
     {
         public required byte[] PngBytes { get; set; }
@@ -172,6 +187,7 @@ public static class UnitySongResourcePacker
         public required int Width { get; init; }
         public required int Height { get; init; }
         public required bool WasResized { get; init; }
+        // 释放Heavy 缓冲区。
         public void ReleaseHeavyBuffers()
         {
             PngBytes = Array.Empty<byte>();
@@ -179,6 +195,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 曲绘纹理编码结果（可直接写入 Texture2D 的数据块）。
     private sealed class EncodedTextureImage
     {
         public required byte[] EncodedBytes { get; init; }
@@ -187,6 +204,7 @@ public static class UnitySongResourcePacker
         public required TextureFormat FinalFormat { get; init; }
     }
 
+    // TextAsset 原始字节解析结果（供不依赖 typetree 的回退写入使用）。
     private sealed class RawTextAssetData
     {
         public required byte[] OriginalBytes { get; init; }
@@ -199,8 +217,10 @@ public static class UnitySongResourcePacker
         public required int ScriptAlignedEndOffset { get; init; }
     }
 
+    // StreamingAssetsMapping（MonoBehaviour）原始字节解析结果。
     private sealed class RawStreamingAssetsMappingMonoBehaviourData
     {
+        // StreamingAssetsMapping 中单条资源映射项。
         public sealed class Entry
         {
             public required string FullLookupPath { get; init; }
@@ -223,6 +243,7 @@ public static class UnitySongResourcePacker
         UInt16Align4PerElement
     }
 
+    // DynamicStringMapping（MonoBehaviour）原始字节解析结果。
     private sealed class RawDynamicStringMappingMonoBehaviourData
     {
         public enum IdsKind
@@ -232,6 +253,7 @@ public static class UnitySongResourcePacker
             PlainInt32
         }
 
+        // DynamicStringMapping 中一条文本的多语言值集合。
         public sealed class LocalizedValue
         {
             public required string English { get; set; }
@@ -241,6 +263,7 @@ public static class UnitySongResourcePacker
             public required string SimplifiedChinese { get; set; }
         }
 
+        // DynamicStringMapping 的单个映射字段（Ids/IdStr/IdValues）。
         public sealed class StringTypeMapping
         {
             public required string FieldName { get; init; }
@@ -276,6 +299,7 @@ public static class UnitySongResourcePacker
         "cardNameTypeMapping"
     };
 
+    // 扫描并收集Bundle。
     public static SongBundleScanResult ScanBundle(string bundleFilePath)
     {
         ValidateBundlePath(bundleFilePath);
@@ -349,6 +373,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 导出New 歌曲 Resources。
     public static NewSongPackExportResult ExportNewSongResources(NewSongPackRequest request)
     {
         ValidateRequest(request);
@@ -425,6 +450,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 校验Request是否有效。
     private static void ValidateRequest(NewSongPackRequest request)
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
@@ -484,6 +510,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 构建Generated Resource 文件。
     private static List<GeneratedResourceFile> BuildGeneratedResourceFiles(NewSongPackRequest request)
     {
         var list = new List<GeneratedResourceFile>(request.Charts.Count + 1);
@@ -524,6 +551,7 @@ public static class UnitySongResourcePacker
         return list;
     }
 
+    // 计算Guid From 路径 And 字节。
     private static string ComputeGuidFromPathAndBytes(string fullLookupPath, byte[] bytes)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(fullLookupPath.Replace('\\', '/'));
@@ -636,6 +664,7 @@ public static class UnitySongResourcePacker
         return false;
     }
 
+    // 读取歌曲 数据库 Slots。
     private static List<SongDatabaseSlotInfo> ReadSongDatabaseSlots(AssetTypeValueField songDbBaseField)
     {
         var allSongInfo = RequireField(songDbBaseField, "allSongInfo");
@@ -677,6 +706,7 @@ public static class UnitySongResourcePacker
         return slots;
     }
 
+    // 读取Back Exported 歌曲 数据库。
     private static SongDatabaseReadbackValidationResult ReadBackExportedSongDatabase(string bundleFilePath, int slotIndex)
     {
         var am = new AssetsManager();
@@ -738,6 +768,7 @@ public static class UnitySongResourcePacker
         return false;
     }
 
+    // 读取歌曲 数据库 Slot Readback。
     private static SongDatabaseReadbackValidationResult ReadSongDatabaseSlotReadback(AssetTypeValueField songDbBaseField, int slotIndex)
     {
         var allSongInfo = RequireField(songDbBaseField, "allSongInfo");
@@ -843,21 +874,26 @@ public static class UnitySongResourcePacker
         return result.OrderBy(x => x.ChartId, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    // 读取P Ptr 文件 Id。
     private static long ReadPPtrFileId(AssetTypeValueField parent, string ptrFieldName)
         => TryReadNumberField(parent, ptrFieldName, "m_FileID")
            ?? TryReadNumberField(parent, ptrFieldName, "m_FileId")
            ?? -1;
 
+    // 读取P Ptr 路径 Id。
     private static long ReadPPtrPathId(AssetTypeValueField parent, string ptrFieldName)
         => TryReadNumberField(parent, ptrFieldName, "m_PathID")
            ?? TryReadNumberField(parent, ptrFieldName, "m_PathId")
            ?? 0;
 
+    // (SongId, BaseName) 组合键比较器，忽略 BaseName 大小写。
     private sealed class SongNameKeyComparer : IEqualityComparer<(int, string)>
     {
         public static SongNameKeyComparer Instance { get; } = new();
+        // 比较当前对象与目标对象是否相等。
         public bool Equals((int, string) x, (int, string) y)
             => x.Item1 == y.Item1 && string.Equals(x.Item2, y.Item2, StringComparison.OrdinalIgnoreCase);
+        // 返回当前对象的哈希码。
         public int GetHashCode((int, string) obj)
             => HashCode.Combine(obj.Item1, StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Item2 ?? ""));
     }
@@ -959,6 +995,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 查找DynamicStringMapping MonoBehaviour 资源。
     private static AssetFileInfo? FindDynamicStringMappingMonoBehaviourAsset(AssetsManager am, AssetsFileInstance assetsInst)
     {
         // 先走已知 PathID 快速路径，避免扫描所有 MonoBehaviour 并触发大量 GetBaseField first-chance 异常。
@@ -1023,6 +1060,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 尝试压缩/回收。
     private static void TryTrimProcessWorkingSet()
     {
         try
@@ -1205,12 +1243,14 @@ public static class UnitySongResourcePacker
         ReplaceArrayElements(idValuesArray, newIdValues, cloneElements: false);
     }
 
+    // 写入歌曲 Id Element。
     private static void WriteSongIdElement(AssetTypeValueField idElem, int songId)
     {
         idElem = UnwrapDataField(idElem);
         RequireSetNumberField(idElem, "Value", songId);
     }
 
+    // 写入字符串 数组 Element。
     private static void WriteStringArrayElement(AssetTypeValueField elem, string value)
     {
         elem = UnwrapDataField(elem);
@@ -1220,6 +1260,7 @@ public static class UnitySongResourcePacker
         throw new Exception($"无法写入字符串数组元素：FieldName={SafeFieldName(elem)}");
     }
 
+    // 写入本地化 字符串 值。
     private static void WriteLocalizedStringValue(AssetTypeValueField idValueElem, string englishText, bool clearOtherLanguages)
     {
         idValueElem = UnwrapDataField(idValueElem);
@@ -1232,6 +1273,7 @@ public static class UnitySongResourcePacker
         TrySetStringField(idValueElem, "SimplifiedChinese", "");
     }
 
+    // 尝试读取原始 DynamicStringMapping MonoBehaviour。
     private static RawDynamicStringMappingMonoBehaviourData? TryReadRawDynamicStringMappingMonoBehaviour(AssetsFileInstance assetsInst, AssetFileInfo info)
     {
         try
@@ -1365,6 +1407,7 @@ public static class UnitySongResourcePacker
         };
     }
 
+    // 获取DynamicStringMapping Ids 类型。
     private static RawDynamicStringMappingMonoBehaviourData.IdsKind GetDynamicStringMappingIdsKind(string fieldName)
     {
         if (string.Equals(fieldName, "rawStoryNameTypeMapping", StringComparison.Ordinal))
@@ -1374,6 +1417,7 @@ public static class UnitySongResourcePacker
         return RawDynamicStringMappingMonoBehaviourData.IdsKind.WrappedUInt16;
     }
 
+    // 读取原始 动态 字符串 Wrapped U Int 16 Id 数组。
     private static List<ushort> ReadRawDynamicStringWrappedUInt16IdArray(AssetsFileReader r, RawDynamicStringMappingIdEncoding encoding)
     {
         int count = r.ReadInt32();
@@ -1394,6 +1438,7 @@ public static class UnitySongResourcePacker
         return list;
     }
 
+    // 读取原始 动态 字符串 Wrapped 字符串 Id 数组。
     private static List<string> ReadRawDynamicStringWrappedStringIdArray(AssetsFileReader r)
     {
         int count = r.ReadInt32();
@@ -1409,6 +1454,7 @@ public static class UnitySongResourcePacker
         return list;
     }
 
+    // 读取原始 动态 字符串 Plain Int 32 Id 数组。
     private static List<int> ReadRawDynamicStringPlainInt32IdArray(AssetsFileReader r)
     {
         int count = r.ReadInt32();
@@ -1421,6 +1467,7 @@ public static class UnitySongResourcePacker
         return list;
     }
 
+    // 读取原始 动态 字符串 字符串 数组。
     private static List<string> ReadRawDynamicStringStringArray(AssetsFileReader r)
     {
         int count = r.ReadInt32();
@@ -1436,6 +1483,7 @@ public static class UnitySongResourcePacker
         return list;
     }
 
+    // 读取原始 动态 字符串 本地化值 数组。
     private static List<RawDynamicStringMappingMonoBehaviourData.LocalizedValue> ReadRawDynamicStringLocalizedValueArray(AssetsFileReader r)
     {
         int count = r.ReadInt32();
@@ -1450,6 +1498,7 @@ public static class UnitySongResourcePacker
         return list;
     }
 
+    // 读取原始 动态 字符串 本地化值。
     private static RawDynamicStringMappingMonoBehaviourData.LocalizedValue ReadRawDynamicStringLocalizedValue(AssetsFileReader r)
     {
         string english = r.ReadCountStringInt32();
@@ -1508,6 +1557,7 @@ public static class UnitySongResourcePacker
         });
     }
 
+    // 构建Updated 原始 DynamicStringMapping MonoBehaviour。
     private static byte[] BuildUpdatedRawDynamicStringMappingMonoBehaviour(RawDynamicStringMappingMonoBehaviourData raw)
     {
         using var ms = new MemoryStream(raw.OriginalBytes.Length + 4096);
@@ -1586,6 +1636,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 写入原始 动态 字符串 本地化值。
     private static void WriteRawDynamicStringLocalizedValue(AssetsFileWriter w, RawDynamicStringMappingMonoBehaviourData.LocalizedValue value)
     {
         w.WriteCountStringInt32(value.English ?? "");
@@ -1600,6 +1651,7 @@ public static class UnitySongResourcePacker
         w.Align();
     }
 
+    // 解析Streaming 资源 映射 宿主 路径。
     private static string ResolveStreamingAssetsMappingHostPath(string preferredAssetsPath)
     {
         if (string.IsNullOrWhiteSpace(preferredAssetsPath) || !File.Exists(preferredAssetsPath))
@@ -1649,6 +1701,7 @@ public static class UnitySongResourcePacker
             $"未在目录中找到 StreamingAssetsMapping（MonoBehaviour）。\n已扫描目录：{dir}\n建议确认选择了包含整个游戏资源 assets 文件的目录。");
     }
 
+    // 查找Streaming 资源 映射 文本 资源。
     private static AssetFileInfo? FindStreamingAssetsMappingTextAsset(AssetsManager am, AssetsFileInstance assetsInst)
     {
         AssetFileInfo? contentFallback = null;
@@ -1681,6 +1734,7 @@ public static class UnitySongResourcePacker
         return contentFallback;
     }
 
+    // 查找Streaming 资源 映射 MonoBehaviour 资源。
     private static AssetFileInfo? FindStreamingAssetsMappingMonoBehaviourAsset(AssetsFileInstance assetsInst)
     {
         foreach (var info in assetsInst.file.GetAssetsOfType(AssetClassID.MonoBehaviour))
@@ -1698,6 +1752,7 @@ public static class UnitySongResourcePacker
         return null;
     }
 
+    // 尝试获取Base 字段 安全。
     private static AssetTypeValueField? TryGetBaseFieldSafe(AssetsManager am, AssetsFileInstance assetsInst, AssetFileInfo info)
     {
         try
@@ -1710,6 +1765,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 准备资源 Manager For Base 字段 Reading。
     private static void PrepareAssetsManagerForBaseFieldReading(AssetsManager am, AssetsFileInstance assetsInst)
     {
         // 当前项目运行环境未提供 classdata.tpk，调用 LoadClassDatabaseFromPackage 会在 AssetsTools.NET 内部抛空引用。
@@ -1718,6 +1774,7 @@ public static class UnitySongResourcePacker
         _ = assetsInst;
     }
 
+    // 判断内容是否符合Streaming 资源 映射 Json特征。
     private static bool LooksLikeStreamingAssetsMappingJson(AssetTypeValueField baseField)
     {
         try
@@ -1731,6 +1788,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 判断内容是否符合Streaming 资源 映射 Json特征。
     private static bool LooksLikeStreamingAssetsMappingJson(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
@@ -1739,6 +1797,7 @@ public static class UnitySongResourcePacker
                text.Contains("FileLength", StringComparison.Ordinal);
     }
 
+    // 尝试读取原始 Streaming 资源 映射 MonoBehaviour。
     private static RawStreamingAssetsMappingMonoBehaviourData? TryReadRawStreamingAssetsMappingMonoBehaviour(AssetsFileInstance assetsInst, AssetFileInfo info)
     {
         try
@@ -1861,6 +1920,7 @@ public static class UnitySongResourcePacker
         return ms.ToArray();
     }
 
+    // 尝试读取原始 文本 资源 数据。
     private static RawTextAssetData? TryReadRawTextAssetData(AssetsFileInstance assetsInst, AssetFileInfo info)
     {
         try
@@ -1916,6 +1976,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 构建Updated 原始 文本 资源 字节。
     private static byte[] BuildUpdatedRawTextAssetBytes(RawTextAssetData raw, string updatedText)
     {
         byte[] newScript = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(updatedText);
@@ -1940,6 +2001,7 @@ public static class UnitySongResourcePacker
         return ms.ToArray();
     }
 
+    // 读取精确 字节。
     private static byte[] ReadExactBytes(Stream stream, int count)
     {
         byte[] buffer = new byte[count];
@@ -1954,6 +2016,7 @@ public static class UnitySongResourcePacker
         return buffer;
     }
 
+    // 解码文本 资源 字节。
     private static string DecodeTextAssetBytes(byte[] bytes)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
@@ -2172,6 +2235,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 处理Upsert 谱面 Id 曲绘 材质 条目。
     private static void UpsertChartIdJacketMaterialEntry(AssetTypeValueField songDbBaseField, string chartId, long materialPathId)
     {
         var owner = RequireField(songDbBaseField, "chartIdJacketMaterials");
@@ -2207,6 +2271,7 @@ public static class UnitySongResourcePacker
         ReplaceArrayElements(array, list, cloneElements: false);
     }
 
+    // 处理Upsert 歌曲 Id 曲绘 材质 条目。
     private static void UpsertSongIdJacketMaterialEntry(AssetTypeValueField songDbBaseField, int songIdValue, long materialPathId)
     {
         var owner = RequireField(songDbBaseField, "songIdJacketMaterials");
@@ -2253,6 +2318,7 @@ public static class UnitySongResourcePacker
         throw new Exception($"无法为 {arrayName} 创建新条目：未找到数组模板元素。");
     }
 
+    // 设置条目 字符串 字段。
     private static void SetEntryStringField(AssetTypeValueField entry, string fieldName, string value)
     {
         entry = UnwrapDataField(entry);
@@ -2261,6 +2327,7 @@ public static class UnitySongResourcePacker
         throw new Exception($"无法写入条目字段 {fieldName}（字符串）。");
     }
 
+    // 设置条目 歌曲 Id 字段。
     private static void SetEntrySongIdField(AssetTypeValueField entry, int songIdValue)
     {
         entry = UnwrapDataField(entry);
@@ -2277,6 +2344,7 @@ public static class UnitySongResourcePacker
         throw new Exception("无法写入 SongJacketEntry.SongId。");
     }
 
+    // 设置条目 P Ptr 字段。
     private static void SetEntryPPtrField(AssetTypeValueField entry, string fieldName, int fileId, long pathId)
     {
         entry = UnwrapDataField(entry);
@@ -2293,6 +2361,7 @@ public static class UnitySongResourcePacker
             throw new Exception($"无法写入条目字段 {fieldName}（PPtr={fileId}:{pathId}）。");
     }
 
+    // 查找谱面 Info Template。
     private static AssetTypeValueField? FindChartInfoTemplate(IReadOnlyList<AssetTypeValueField> allSlots)
     {
         foreach (var slot in allSlots)
@@ -2311,6 +2380,7 @@ public static class UnitySongResourcePacker
         return null;
     }
 
+    // 查找歌曲 Info Template。
     private static AssetTypeValueField? FindSongInfoTemplate(IReadOnlyList<AssetTypeValueField> allSlots)
     {
         foreach (var slot in allSlots)
@@ -2347,6 +2417,7 @@ public static class UnitySongResourcePacker
         return null;
     }
 
+    // 获取歌曲 Info 谱面 Count。
     private static int GetSongInfoChartCount(AssetTypeValueField songInfoSlot)
     {
         try
@@ -2382,12 +2453,14 @@ public static class UnitySongResourcePacker
         return clone;
     }
 
+    // 解包数据 字段包装层。
     private static AssetTypeValueField UnwrapDataField(AssetTypeValueField field)
     {
         ArgumentNullException.ThrowIfNull(field);
         return TryGetField(field, "data", out var data) ? data : field;
     }
 
+    // 校验歌曲 数据 歌曲 Ids Unique是否有效。
     private static void ValidateSongDataSongIdsUnique(IReadOnlyList<AssetTypeValueField> slots)
     {
         var seen = new Dictionary<int, int>();
@@ -2408,6 +2481,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 校验歌曲 数据 曲绘 Lookup Keys Unique是否有效。
     private static void ValidateSongDataJacketLookupKeysUnique(AssetTypeValueField songDbBaseField, string? phase = null)
     {
         string phasePrefix = string.IsNullOrWhiteSpace(phase) ? "" : $"（{phase}）";
@@ -2446,6 +2520,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 处理Dump 歌曲 Id 曲绘 材质 条目。
     private static string DumpSongIdJacketMaterialsEntries(IReadOnlyList<AssetTypeValueField> entries)
     {
         var sb = new StringBuilder();
@@ -2462,6 +2537,7 @@ public static class UnitySongResourcePacker
         return sb.ToString().TrimEnd();
     }
 
+    // 处理Dump 谱面 Id 曲绘 材质 条目。
     private static string DumpChartIdJacketMaterialsEntries(IReadOnlyList<AssetTypeValueField> entries)
     {
         var sb = new StringBuilder();
@@ -2478,12 +2554,14 @@ public static class UnitySongResourcePacker
         return sb.ToString().TrimEnd();
     }
 
+    // 去重歌曲 数据 曲绘 Lookups。
     private static void DeduplicateSongDataJacketLookups(AssetTypeValueField songDbBaseField)
     {
         DeduplicateSongIdJacketMaterials(songDbBaseField);
         DeduplicateChartIdJacketMaterials(songDbBaseField);
     }
 
+    // 去重歌曲 Id 曲绘 材质。
     private static void DeduplicateSongIdJacketMaterials(AssetTypeValueField songDbBaseField)
     {
         if (!TryGetField(songDbBaseField, "songIdJacketMaterials", out var owner))
@@ -2511,6 +2589,7 @@ public static class UnitySongResourcePacker
             ReplaceArrayElements(array, deduped, cloneElements: false);
     }
 
+    // 去重谱面 Id 曲绘 材质。
     private static void DeduplicateChartIdJacketMaterials(AssetTypeValueField songDbBaseField)
     {
         if (!TryGetField(songDbBaseField, "chartIdJacketMaterials", out var owner))
@@ -2538,6 +2617,7 @@ public static class UnitySongResourcePacker
             ReplaceArrayElements(array, deduped, cloneElements: false);
     }
 
+    // 重写材质 纹理 Reference。
     private static int RewriteMaterialTextureReference(AssetTypeValueField materialBaseField, long newTexturePathId)
     {
         int changed = 0;
@@ -2576,6 +2656,7 @@ public static class UnitySongResourcePacker
         return changed;
     }
 
+    // 枚举字段。
     private static IEnumerable<AssetTypeValueField> EnumerateFields(AssetTypeValueField root)
     {
         yield return root;
@@ -2587,6 +2668,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 处理Add Cloned 资源 From Template。
     private static long AddClonedAssetFromTemplate(AssetsFile assetsFile, AssetFileInfo templateInfo, AssetTypeValueField baseField)
     {
         long pathId = GetNextPathId(assetsFile);
@@ -2607,6 +2689,7 @@ public static class UnitySongResourcePacker
         return pathId;
     }
 
+    // 获取Next 路径 Id。
     private static long GetNextPathId(AssetsFile assetsFile)
     {
         long max = 0;
@@ -2618,6 +2701,7 @@ public static class UnitySongResourcePacker
 
     private static int ParseMaybeInt(string text) => int.TryParse(text, out int v) ? v : 0;
 
+    // 获取并确保字段存在。
     private static AssetTypeValueField RequireField(AssetTypeValueField parent, string fieldName)
     {
         if (!TryGetField(parent, fieldName, out var field))
@@ -2625,6 +2709,7 @@ public static class UnitySongResourcePacker
         return field;
     }
 
+    // 尝试获取字段。
     private static bool TryGetField(AssetTypeValueField parent, string fieldName, out AssetTypeValueField field)
     {
         try
@@ -2639,6 +2724,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 获取并确保数组 字段存在。
     private static AssetTypeValueField RequireArrayField(AssetTypeValueField ownerField)
     {
         if (TryGetField(ownerField, "Array", out var arr))
@@ -2656,6 +2742,7 @@ public static class UnitySongResourcePacker
         return ownerField;
     }
 
+    // 获取数组 Elements。
     private static List<AssetTypeValueField> GetArrayElements(AssetTypeValueField arrayField)
     {
         if (arrayField.Children == null || arrayField.Children.Count == 0)
@@ -2666,6 +2753,7 @@ public static class UnitySongResourcePacker
         return arrayField.Children.Where((_, idx) => idx != sizeIndex).ToList();
     }
 
+    // 处理Replace 数组 Elements。
     private static void ReplaceArrayElements(AssetTypeValueField arrayField, IReadOnlyList<AssetTypeValueField> newElements, bool cloneElements = true)
     {
         arrayField = RequireArrayField(arrayField);
@@ -2694,6 +2782,7 @@ public static class UnitySongResourcePacker
         try { arrayField.AsArray = new AssetTypeArrayInfo(newElements.Count); } catch { }
     }
 
+    // 查找数组 Size 字段 Index。
     private static int FindArraySizeFieldIndex(IReadOnlyList<AssetTypeValueField> children)
     {
         if (children == null || children.Count == 0) return -1;
@@ -2706,6 +2795,7 @@ public static class UnitySongResourcePacker
         return -1;
     }
 
+    // 判断内容是否符合数组 Size 字段特征。
     private static bool LooksLikeArraySizeField(AssetTypeValueField field)
     {
         if (field == null) return false;
@@ -2730,6 +2820,7 @@ public static class UnitySongResourcePacker
         return false;
     }
 
+    // 安全处理Build 歌曲 数据库 数组 Structure Summary。
     private static string SafeBuildSongDatabaseArrayStructureSummary(AssetTypeValueField songDbBaseField, int slotIndex, string title)
     {
         try
@@ -2742,6 +2833,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 构建歌曲 数据库 数组 Structure Summary。
     private static string BuildSongDatabaseArrayStructureSummary(AssetTypeValueField songDbBaseField, int slotIndex, string title)
     {
         var sb = new StringBuilder();
@@ -2791,6 +2883,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 追加数组 Structure Summary。
     private static void AppendArrayStructureSummary(StringBuilder sb, string label, AssetTypeValueField ownerField)
     {
         var arrayField = RequireArrayField(ownerField);
@@ -2810,16 +2903,19 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 安全处理字段 Name。
     private static string SafeFieldName(AssetTypeValueField field)
     {
         try { return field.FieldName ?? "<null>"; } catch { return "<err>"; }
     }
 
+    // 安全处理Template Name。
     private static string SafeTemplateName(AssetTypeValueField field)
     {
         try { return field.TemplateField?.Name ?? "<null>"; } catch { return "<err>"; }
     }
 
+    // 创建Synthetic 数组 Size 字段。
     private static AssetTypeValueField CreateSyntheticArraySizeField(AssetTypeValueField arrayField)
     {
         AssetTypeTemplateField? template = null;
@@ -2848,6 +2944,7 @@ public static class UnitySongResourcePacker
         return field;
     }
 
+    // 尝试读取字符串 字段。
     private static string? TryReadStringField(AssetTypeValueField parent, params string[] path)
     {
         try
@@ -2860,6 +2957,7 @@ public static class UnitySongResourcePacker
         catch { return null; }
     }
 
+    // 尝试读取数值 字段。
     private static long? TryReadNumberField(AssetTypeValueField parent, params string[] path)
     {
         try
@@ -2877,6 +2975,7 @@ public static class UnitySongResourcePacker
         catch { return null; }
     }
 
+    // 遍历路径。
     private static AssetTypeValueField TraversePath(AssetTypeValueField parent, params string[] path)
     {
         var cur = parent;
@@ -2884,6 +2983,7 @@ public static class UnitySongResourcePacker
         return cur;
     }
 
+    // 处理Ensure 字段 值 Initialized。
     private static void EnsureFieldValueInitialized(AssetTypeValueField field)
     {
         if (field.Value != null) return;
@@ -2909,6 +3009,7 @@ public static class UnitySongResourcePacker
         field.Children ??= new List<AssetTypeValueField>();
     }
 
+    // 获取并确保Set 数值 字段 Direct存在。
     private static void RequireSetNumberFieldDirect(AssetTypeValueField field, long value)
     {
         EnsureFieldValueInitialized(field);
@@ -2923,24 +3024,28 @@ public static class UnitySongResourcePacker
         throw new Exception($"无法写入字段 {field.FieldName}");
     }
 
+    // 获取并确保Set 数值 字段存在。
     private static void RequireSetNumberField(AssetTypeValueField parent, string fieldName, long value)
     {
         if (!TrySetNumberField(parent, fieldName, value))
             throw new Exception($"无法写入字段 {fieldName}（数值：{value}）。");
     }
 
+    // 获取并确保Set 字符串 字段存在。
     private static void RequireSetStringField(AssetTypeValueField parent, string fieldName, string value)
     {
         if (!TrySetStringField(parent, fieldName, value))
             throw new Exception($"无法写入字段 {fieldName}（字符串）。");
     }
 
+    // 获取并确保Set 字节 数组 字段存在。
     private static void RequireSetByteArrayField(AssetTypeValueField parent, string fieldName, byte[] bytes)
     {
         if (!TrySetByteArrayField(parent, fieldName, bytes))
             throw new Exception($"无法写入字段 {fieldName}（字节数组长度：{bytes.Length}）。");
     }
 
+    // 尝试写入数值 字段。
     private static bool TrySetNumberField(AssetTypeValueField parent, string fieldName, long value)
     {
         if (!TryGetField(parent, fieldName, out var field)) return false;
@@ -2956,6 +3061,7 @@ public static class UnitySongResourcePacker
         return false;
     }
 
+    // 尝试写入浮点 Or 双精度 字段。
     private static bool TrySetFloatOrDoubleField(AssetTypeValueField parent, string fieldName, double value)
     {
         if (!TryGetField(parent, fieldName, out var field)) return false;
@@ -2966,6 +3072,7 @@ public static class UnitySongResourcePacker
         return false;
     }
 
+    // 尝试写入字符串 字段。
     private static bool TrySetStringField(AssetTypeValueField parent, string fieldName, string value)
     {
         if (!TryGetField(parent, fieldName, out var field)) return false;
@@ -2974,6 +3081,7 @@ public static class UnitySongResourcePacker
         try { field.Value = new AssetTypeValue(value); return true; } catch { return false; }
     }
 
+    // 尝试写入字节 数组 字段。
     private static bool TrySetByteArrayField(AssetTypeValueField parent, string fieldName, byte[] bytes)
     {
         if (!TryGetField(parent, fieldName, out var field)) return false;
@@ -2988,6 +3096,7 @@ public static class UnitySongResourcePacker
         catch { return false; }
     }
 
+    // 加载预处理 图片。
     private static PreparedImage LoadPreparedImage(string imageFilePath)
     {
         using var fs = File.OpenRead(imageFilePath);
@@ -3007,6 +3116,7 @@ public static class UnitySongResourcePacker
         return new PreparedImage { PngBytes = ms.ToArray(), Bgra32Bytes = bgraBytes, Width = w, Height = h, WasResized = false };
     }
 
+    // 调整预处理 图片 If Needed尺寸。
     private static PreparedImage ResizePreparedImageIfNeeded(PreparedImage image, int targetWidth, int targetHeight)
     {
         if (targetWidth <= 0 || targetHeight <= 0) return image;
@@ -3050,6 +3160,7 @@ public static class UnitySongResourcePacker
         };
     }
 
+    // 获取Preferred 纹理 Formats。
     private static IEnumerable<TextureFormat> GetPreferredTextureFormats(TextureFormat originalFormat, int width, int height)
     {
         var yielded = new HashSet<int>();
@@ -3063,6 +3174,7 @@ public static class UnitySongResourcePacker
             yield return TextureFormat.BC7;
     }
 
+    // 尝试编码Managed。
     private static bool TryEncodeManaged(byte[] pngBytes, TextureFormat format, out byte[] encoded, out int width, out int height)
     {
         encoded = Array.Empty<byte>();
@@ -3080,6 +3192,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 处理Bgra To Unity Rgba 原始。
     private static byte[] BgraToUnityRgbaRaw(byte[] bgra, int width, int height)
     {
         int rowStride = width * 4;
@@ -3104,6 +3217,7 @@ public static class UnitySongResourcePacker
     [DllImport("psapi.dll", SetLastError = true)]
     private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
+    // 应用编码后 纹理 数据修改。
     private static void ApplyEncodedTextureData(TextureFile texture, EncodedTextureImage data)
     {
         texture.m_Width = data.Width;
@@ -3119,6 +3233,7 @@ public static class UnitySongResourcePacker
         texture.m_StreamData.path = "";
     }
 
+    // 处理Force Apply 编码后 纹理 数据 To Base 字段。
     private static void ForceApplyEncodedTextureDataToBaseField(AssetTypeValueField baseField, EncodedTextureImage data)
     {
         RequireSetNumberField(baseField, "m_Width", data.Width);
@@ -3139,6 +3254,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 尝试写入布尔 字段。
     private static bool TrySetBoolField(AssetTypeValueField parent, string fieldName, bool value)
     {
         if (!TryGetField(parent, fieldName, out var field)) return false;
@@ -3147,6 +3263,7 @@ public static class UnitySongResourcePacker
         try { field.Value = new AssetTypeValue(value); return true; } catch { return false; }
     }
 
+    // 追加映射 条目。
     private static string AppendMappingEntries(string originalJson, IReadOnlyList<NewSongMappingEntryResult> newEntries)
     {
         JsonNode? root = JsonNode.Parse(originalJson);
@@ -3192,6 +3309,7 @@ public static class UnitySongResourcePacker
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
+    // 读取文本 资源 Content。
     private static string ReadTextAssetContent(AssetTypeValueField baseField)
     {
         if (TryGetField(baseField, "m_Script", out var f1))
@@ -3207,6 +3325,7 @@ public static class UnitySongResourcePacker
         throw new Exception("无法读取 TextAsset 文本内容。");
     }
 
+    // 写入文本 资源 Content。
     private static void WriteTextAssetContent(AssetTypeValueField baseField, string content)
     {
         if (TrySetStringField(baseField, "m_Script", content)) return;
@@ -3291,6 +3410,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 恢复Deployed 歌曲 文件。
     public static string RestoreDeployedSongFiles(string gameRootDirectory)
     {
         if (string.IsNullOrWhiteSpace(gameRootDirectory))
@@ -3427,6 +3547,7 @@ public static class UnitySongResourcePacker
         lines.Add($"- {label}：已恢复原文件 -> {livePath}");
     }
 
+    // 判断是否满足Hex 文件 Name 32条件。
     private static bool IsHexFileName32(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName) || fileName!.Length != 32)
@@ -3443,6 +3564,7 @@ public static class UnitySongResourcePacker
         return true;
     }
 
+    // 准备输出 计划。
     private static OutputPlan PrepareOutputPlan(string sourcePath, string requestedPath, bool autoRenameWhenTargetLocked)
     {
         string src = Path.GetFullPath(sourcePath);
@@ -3485,6 +3607,7 @@ public static class UnitySongResourcePacker
         };
     }
 
+    // 完成输出 计划收尾处理。
     private static void FinalizeOutputPlan(OutputPlan plan)
     {
         if (!plan.ReplaceAfterPack) return;
@@ -3502,6 +3625,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 构建Temporary Export 路径。
     private static string BuildTemporaryExportPath(string finalPath)
     {
         string dir = Path.GetDirectoryName(finalPath) ?? "";
@@ -3515,6 +3639,7 @@ public static class UnitySongResourcePacker
         return Path.Combine(dir, $"{name}.tmp_{Guid.NewGuid():N}{ext}");
     }
 
+    // 查找Available Alternative 路径。
     private static string FindAvailableAlternativePath(string path)
     {
         string dir = Path.GetDirectoryName(path) ?? "";
@@ -3528,6 +3653,7 @@ public static class UnitySongResourcePacker
         return Path.Combine(dir, $"{name} ({Guid.NewGuid():N}){ext}");
     }
 
+    // 判断是否可Overwrite 路径。
     private static bool CanOverwritePath(string path, out string reason)
     {
         reason = "";
@@ -3553,6 +3679,7 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 写入资源 文件 Applying Replacers。
     private static void WriteAssetsFileApplyingReplacers(AssetsFile assetsFile, string outputPath)
     {
         string? dir = Path.GetDirectoryName(outputPath);
@@ -3562,6 +3689,7 @@ public static class UnitySongResourcePacker
         assetsFile.Write(writer, 0);
     }
 
+    // 写入Bundle Applying Replacers。
     private static void WriteBundleApplyingReplacers(AssetBundleFile bundleFile, AssetBundleCompressionType compressionType, string outputPath)
     {
         string? dir = Path.GetDirectoryName(outputPath);
@@ -3592,12 +3720,14 @@ public static class UnitySongResourcePacker
         }
     }
 
+    // 安全处理Get Bundle 条目 Name。
     private static string SafeGetBundleEntryName(AssetBundleFile bundleFile, int idx)
     {
         try { return bundleFile.BlockAndDirInfo.DirectoryInfos[idx].Name ?? $"file_{idx}"; }
         catch { return $"file_{idx}"; }
     }
 
+    // 校验Bundle 路径是否有效。
     private static void ValidateBundlePath(string bundleFilePath)
     {
         if (string.IsNullOrWhiteSpace(bundleFilePath))
@@ -3606,6 +3736,7 @@ public static class UnitySongResourcePacker
             throw new FileNotFoundException($"bundle 文件不存在：{bundleFilePath}");
     }
 
+    // 校验图片 路径是否有效。
     private static void ValidateImagePath(string imageFilePath)
     {
         if (string.IsNullOrWhiteSpace(imageFilePath))

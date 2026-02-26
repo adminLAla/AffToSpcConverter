@@ -3,6 +3,7 @@ using System;
 
 namespace AffToSpcConverter.Utils;
 
+// 缓动函数工具，提供轨迹/动画计算所需的插值方法。
 public static class EasingUtil
 {
     // 将 AFF 弧线缓动标记转换为 SPC 左右边缘缓动代码。

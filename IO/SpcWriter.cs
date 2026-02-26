@@ -5,6 +5,7 @@ using System.Text;
 
 namespace AffToSpcConverter.IO;
 
+// SPC 文本写入器，负责把事件列表序列化为 .spc 文本。
 public static class SpcWriter
 {
     // 将 SPC 事件列表写出为文本内容。

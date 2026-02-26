@@ -2,6 +2,7 @@
 
 namespace AffToSpcConverter.Models;
 
+// AFF 的 timing 事件模型。
 public sealed record AffTiming(
     // 该速度段开始生效的时间偏移（毫秒）。
     int OffsetMs,
@@ -11,6 +12,7 @@ public sealed record AffTiming(
     double Beats
 );
 
+// AFF 的 Tap 音符模型。
 public sealed record AffNote(
     // Tap 音符的判定时间（毫秒）。
     int TimeMs,
@@ -18,6 +20,7 @@ public sealed record AffNote(
     int Lane
 );
 
+// AFF 的 Hold 音符模型。
 public sealed record AffHold(
     // Hold 起始时间（毫秒）。
     int T1Ms,
@@ -27,6 +30,7 @@ public sealed record AffHold(
     int Lane
 );
 
+// AFF 的 Arc 音符模型（含 ArcTap 列表）。
 public sealed record AffArc(
     // Arc 起始时间（毫秒）。
     int T1Ms, int T2Ms,
@@ -46,6 +50,7 @@ public sealed record AffArc(
     List<int> ArcTapTimesMs
 );
 
+// AFF 谱面根模型，汇总各类事件列表。
 public sealed class AffChart
 {
     // 谱面中的 timing 段列表。

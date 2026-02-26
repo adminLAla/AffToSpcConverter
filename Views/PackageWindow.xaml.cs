@@ -9,6 +9,7 @@ using System.Linq;
 
 namespace AffToSpcConverter.Views;
 
+// 打包加密资源窗口，处理 BGM/谱面的加密与映射替换。
 public partial class PackageWindow : Window
 {
     private readonly PackageViewModel _vm = new PackageViewModel();

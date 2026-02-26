@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 
 namespace AffToSpcConverter.Parsing;
 
+// AFF 文本解析器，负责把 Arcaea 谱面文本解析为 AffChart 模型。
 public static class AffParser
 {
     private static readonly CultureInfo CI = CultureInfo.InvariantCulture;

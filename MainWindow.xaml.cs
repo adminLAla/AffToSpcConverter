@@ -1,4 +1,4 @@
-﻿using AffToSpcConverter.Convert;
+using AffToSpcConverter.Convert;
 using AffToSpcConverter.Convert.Preview;
 using AffToSpcConverter.IO;
 using AffToSpcConverter.Parsing;
@@ -23,6 +23,7 @@ using System.Windows.Media;
 
 namespace AffToSpcConverter;
 
+// 主窗口，负责转换、预览、文本编辑、打包入口与工具菜单功能。
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm = new();
@@ -58,6 +59,7 @@ public partial class MainWindow : Window
     private int _affLineNumberRenderedCount = -1;
     private int _spcLineNumberRenderedCount = -1;
 
+    // 合法性校验结果列表项，用于弹窗显示与行号定位。
     private sealed class ValidationIssueListItem
     {
         public required string Text { get; init; }
@@ -460,11 +462,15 @@ public partial class MainWindow : Window
     // 恢复“打包谱面”写入到游戏目录的文件（回滚 *_original，并清理 sam 中新增哈希资源）。
     private void MenuRestoreSongPackedFiles_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog();
+        var dialog = new OpenFolderDialog
+        {
+            Title = "请选择游戏根目录（例如 In Falsus Demo）"
+        };
         if (dialog.ShowDialog() != true) return;
 
         if (MessageBox.Show(
-                "将恢复该游戏目录下由“打包谱面”写入的文件：\n" +
+                "你选择的是游戏根目录（例如 In Falsus Demo）。\n\n" +
+                "将恢复该目录下由“打包谱面”写入的文件：\n" +
                 "- 回滚 *_original 备份（sharedassets0.assets/resources.assets/bundle）\n" +
                 "- 清理 sam 文件夹中新增加密资源（依据 SongData 备份目录推断）\n\n" +
                 "是否继续？",
@@ -1584,6 +1590,7 @@ public partial class MainWindow : Window
 
     // 仅用于改变输出采样率元数据，从而实现带音高变化的变速播放。
     // 该包装流不拥有底层流的生命周期，底层流仍由 _audioStream 统一释放。
+    // 通过修改输出采样率实现变速播放的音频流包装器（会变调）。
     private sealed class PlaybackRateWaveStream : WaveStream
     {
         private readonly WaveStream _source;
@@ -1616,6 +1623,7 @@ public partial class MainWindow : Window
             set => _source.CurrentTime = value;
         }
 
+        // 释放当前对象持有的资源。
         protected override void Dispose(bool disposing)
         {
             // 不释放 _source；由外部统一管理底层解码流生命周期。

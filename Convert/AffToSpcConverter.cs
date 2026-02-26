@@ -7,6 +7,7 @@ using System.Linq;
 
 namespace AffToSpcConverter.Convert;
 
+// AFF -> SPC 转换入口，组织解析、转换与输出事件生成流程。
 public static class AffToSpcConverter
 {
     // 根据配置选择转换规则并执行 AFF 到 SPC 转换。

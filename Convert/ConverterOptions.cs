@@ -1,5 +1,6 @@
 ﻿namespace AffToSpcConverter.Convert;
 
+// 转换选项对象，保存谱面转换时的可调参数。
 public sealed class ConverterOptions
 {
     // 映射规则
