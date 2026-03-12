@@ -82,6 +82,15 @@ public class GameAssetPacker
         return XtsEncrypt(plainBytes);
     }
 
+    // 返回与 EncryptBytesForGame 一致的输出长度（按 16 字节对齐补齐）。
+    public static int GetEncryptedLengthForGame(int plainLength)
+    {
+        if (plainLength < 0) throw new ArgumentOutOfRangeException(nameof(plainLength));
+        if (plainLength == 0) return 0;
+        int paddingLen = (16 - plainLength % 16) % 16;
+        return checked(plainLength + paddingLen);
+    }
+
     // 读取映射表中的 FullLookupPath 列表，并按源文件类型过滤可替换目标。
     public static IReadOnlyList<string> GetReplacementCandidates(string mappingJsonPath, string? sourceFilePath)
     {

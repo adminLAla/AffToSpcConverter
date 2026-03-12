@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using AffToSpcConverter.Utils;
 using AffToSpcConverter.ViewModels;
 using Microsoft.Win32;
@@ -131,6 +132,19 @@ public partial class BundleTexturePackageWindow : Window
 
         _vm.SelectedChartRow.ChartFilePath = dialog.FileName;
         _vm.Status = $"已为槽位 {_vm.SelectedChartRow.ChartSlotIndex} 选择谱面：{Path.GetFileName(dialog.FileName)}";
+    }
+
+    // 当鼠标位于 ChartInfos DataGrid 上时，将滚轮滚动转发给外层页面 ScrollViewer。
+    private void ChartRowsGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (MainScrollViewer == null) return;
+
+        double targetOffset = MainScrollViewer.VerticalOffset - e.Delta;
+        if (targetOffset < 0) targetOffset = 0;
+        if (targetOffset > MainScrollViewer.ScrollableHeight) targetOffset = MainScrollViewer.ScrollableHeight;
+
+        MainScrollViewer.ScrollToVerticalOffset(targetOffset);
+        e.Handled = true;
     }
 
     // 从已有曲目复制“歌曲显示与行为字段”（优先曲绘模板同名曲目，找不到再手动选择）。

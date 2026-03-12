@@ -9,7 +9,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="MainScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <GroupBox Header="资源文件" Margin="0,0,0,8">
                     <Grid Margin="10">
@@ -194,6 +194,7 @@
                                   CanUserAddRows="False"
                                   CanUserDeleteRows="False"
                                   HeadersVisibility="Column"
+                                  PreviewMouseWheel="ChartRowsGrid_PreviewMouseWheel"
                                   ItemsSource="{Binding ChartRows}"
                                   SelectedItem="{Binding SelectedChartRow}"
                                   MinHeight="210">

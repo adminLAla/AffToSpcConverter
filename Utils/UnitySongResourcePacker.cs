@@ -525,7 +525,7 @@ public static class UnitySongResourcePacker
             {
                 FullLookupPath = bgmLookup,
                 Guid = ComputeGuidFromPathAndBytes(bgmLookup, bgmBytes),
-                FileLength = bgmBytes.Length
+                FileLength = GameAssetPacker.GetEncryptedLengthForGame(bgmBytes.Length)
             }
         });
 
@@ -540,7 +540,7 @@ public static class UnitySongResourcePacker
                 {
                     FullLookupPath = lookup,
                     Guid = ComputeGuidFromPathAndBytes(lookup, bytes),
-                    FileLength = bytes.Length
+                    FileLength = GameAssetPacker.GetEncryptedLengthForGame(bytes.Length)
                 }
             });
         }
@@ -570,7 +570,7 @@ public static class UnitySongResourcePacker
         foreach (var file in generatedFiles)
         {
             string outputPath = Path.Combine(outputDirectory, file.MappingEntry.Guid);
-            if (TryReuseExistingEncryptedBackup(outputPath, file.PlainBytes.Length))
+            if (TryReuseExistingEncryptedBackup(outputPath, file.MappingEntry.FileLength))
             {
                 reused++;
                 continue;
