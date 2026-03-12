@@ -126,7 +126,18 @@ public class GameAssetPacker
     // 使用 XTS 逻辑加密字节数组。
     private static byte[] XtsEncrypt(byte[] data)
     {
-        if (data.Length == 0) return data;
+        if (data == null || data.Length == 0) return Array.Empty<byte>();
+
+        // --- 修改点 1: 数据填充 (补齐至 16 字节倍数) ---
+        int paddingLen = (16 - data.Length % 16) % 16;
+        byte[] paddedData = data;
+        if (paddingLen > 0)
+        {
+            paddedData = new byte[data.Length + paddingLen];
+            Buffer.BlockCopy(data, 0, paddedData, 0, data.Length);
+            // 填充换行符 '\n' (0x0A)，与 Python 代码一致
+            for (int i = 0; i < paddingLen; i++) paddedData[data.Length + i] = 0x0A;
+        }
 
         using (Aes aesData = Aes.Create())
         using (Aes aesTweak = Aes.Create())
@@ -139,125 +150,66 @@ public class GameAssetPacker
             {
                 int blockSize = 16;
                 int sectorSize = 512;
-                int sectorIndex = 0;
-                
-                byte[] result = new byte[data.Length];
+                byte[] result = new byte[paddedData.Length];
 
-                for (int offset = 0; offset < data.Length; offset += sectorSize)
+                for (int offset = 0; offset < paddedData.Length; offset += sectorSize)
                 {
-                    int len = Math.Min(sectorSize, data.Length - offset);
-                    byte[] sectorBytes = new byte[len];
-                    Array.Copy(data, offset, sectorBytes, 0, len);
+                    int currentSectorLen = Math.Min(sectorSize, paddedData.Length - offset);
+                    int sectorIndex = offset / sectorSize;
 
-                    // 构造当前扇区编号对应的 16 字节 tweak 输入块。
+                    // --- 修改点 2: 构造 Tweak 输入 (Little Endian 16 bytes) ---
                     byte[] sectorIdxBytes = new byte[16];
-                    Array.Copy(BitConverter.GetBytes(sectorIndex), 0, sectorIdxBytes, 0, 4); // Little endian 4 bytes
-                    
+                    byte[] indexBytes = BitConverter.GetBytes(sectorIndex);
+                    if (!BitConverter.IsLittleEndian) Array.Reverse(indexBytes);
+                    Array.Copy(indexBytes, 0, sectorIdxBytes, 0, 4);
+
                     byte[] tweak = new byte[16];
                     encTweak.TransformBlock(sectorIdxBytes, 0, 16, tweak, 0);
 
-                    // 计算当前扇区的完整块数量与尾部剩余字节数。
-                    int fullBlocks = len / blockSize;
-                    int remainder = len % blockSize;
-                    
-                    // 若存在尾块残余，需要预留最后一个完整块给 CTS 处理。
-                    // standardBlocks 表示可按普通 XTS 直接处理的完整块数量。
-                    int standardBlocks = (remainder > 0) ? fullBlocks - 1 : fullBlocks;
-
-                    byte[] encryptedSector = new byte[len];
-                    byte[] curTweak = new byte[16];
-                    Array.Copy(tweak, curTweak, 16);
-
-                    // 1. 先加密可按标准 XTS 处理的完整块。
-                    for (int i = 0; i < standardBlocks; i++)
+                    // 逐块加密 (16字节一组)
+                    for (int i = 0; i < currentSectorLen; i += blockSize)
                     {
-                        int blkOff = i * blockSize;
-                        byte[] blk = new byte[blockSize];
-                        Array.Copy(sectorBytes, blkOff, blk, 0, blockSize);
-
-                        ProcessBlockEnc(blk, curTweak, encData, encryptedSector, blkOff);
-                        
-                        curTweak = TweakMul2(curTweak);
+                        int blkOff = offset + i;
+                        ProcessBlockEnc(paddedData, blkOff, tweak, encData, result, blkOff);
+                        tweak = TweakMul2(tweak); // 更新 Tweak
                     }
-
-                    // 2. 若存在尾部残余，则执行 XTS-CTS（密文窃取）处理。
-                    if (remainder > 0)
-                    {
-                        // 当前处理第 m-1 个完整块与第 m 个部分块。
-                        // curTweak 对应 T_{m-1}。
-                        // tweakM 对应 T_m。
-                        byte[] tweakMm1 = new byte[16]; Array.Copy(curTweak, tweakMm1, 16);
-                        byte[] tweakM = TweakMul2(tweakMm1);
-
-                        int offMm1 = standardBlocks * blockSize;
-                        int offM = offMm1 + blockSize;
-
-                        // 读取明文块 P_{m-1}。
-                        byte[] P_Mm1 = new byte[blockSize];
-                        Array.Copy(sectorBytes, offMm1, P_Mm1, 0, blockSize);
-
-                        // 读取明文部分块 P_m。
-                        byte[] P_M = new byte[remainder];
-                        Array.Copy(sectorBytes, offM, P_M, 0, remainder);
-
-                        // 计算临时密文块 CC（由 P_{m-1} 经 T_{m-1} 加密得到）。
-                        byte[] CC = new byte[blockSize];
-                        // 第一步：与 T_{m-1} 异或。
-                        for(int k=0; k<16; k++) CC[k] = (byte)(P_Mm1[k] ^ tweakMm1[k]);
-                        // 第二步：执行分组加密。
-                        byte[] temp = new byte[blockSize];
-                        encData.TransformBlock(CC, 0, 16, temp, 0);
-                        // 第三步：再次与 T_{m-1} 异或。
-                        for (int k = 0; k < 16; k++) CC[k] ^= tweakMm1[k];
-
-                        // 取 CC 的前 remainder 字节作为末尾部分密文 C_m。
-                        // 相当于从前一块“借用”密文字节完成窃取。
-                        Array.Copy(CC, 0, encryptedSector, offM, remainder);
-
-                        // 构造 PP：P_m 与 CC 剩余字节拼接。
-                        byte[] PP = new byte[blockSize];
-                        Array.Copy(P_M, 0, PP, 0, remainder);
-                        Array.Copy(CC, remainder, PP, remainder, blockSize - remainder);
-
-                        // 使用 T_m 加密 PP，得到位置 m-1 的完整密文块 C_{m-1}。
-                        // ProcessBlockEnc 内部会先与 tweak 异或。
-                        // 然后执行 AES-ECB 加密。
-                        // 最后再次异或 tweak 并写回输出缓冲区。
-                        ProcessBlockEnc(PP, tweakM, encData, encryptedSector, offMm1);
-                    }
-
-                    Array.Copy(encryptedSector, 0, result, offset, len);
-                    sectorIndex++;
                 }
-
                 return result;
             }
         }
     }
 
     // 按 XTS 单块流程加密一个 16 字节分组。
-    private static void ProcessBlockEnc(byte[] input16, byte[] tweak, ICryptoTransform enc, byte[] outBuf, int outOffset)
+    private static void ProcessBlockEnc(byte[] input, int inOff, byte[] tweak, ICryptoTransform enc, byte[] output, int outOff)
     {
         byte[] tmp = new byte[16];
-        // 先将输入块与 tweak 异或。
-        for(int i=0; i<16; i++) tmp[i] = (byte)(input16[i] ^ tweak[i]);
-        // 执行 AES 分组加密。
+        for (int i = 0; i < 16; i++) tmp[i] = (byte)(input[inOff + i] ^ tweak[i]);
+
         byte[] encBlk = new byte[16];
         enc.TransformBlock(tmp, 0, 16, encBlk, 0);
-        // 将加密结果再次与 tweak 异或。
-        for (int i = 0; i < 16; i++) encBlk[i] ^= tweak[i];
-        
-        Array.Copy(encBlk, 0, outBuf, outOffset, 16);
+
+        for (int i = 0; i < 16; i++) output[outOff + i] = (byte)(encBlk[i] ^ tweak[i]);
     }
 
     // 计算 XTS 中 tweak 的 GF(2^128) 乘 2。
     private static byte[] TweakMul2(byte[] t)
     {
-        bool c = (t[15] & 0x80) != 0;
         byte[] r = new byte[16];
-        byte s = 0;
-        for (int i = 0; i < 16; i++) { byte n = (byte)((t[i] & 0x80) >> 7); r[i] = (byte)((t[i] << 1) | s); s = n; }
-        if (c) r[0] ^= 0x87;
+        byte carry = 0;
+
+        // 模拟 Python 的 little endian 128-bit 移位
+        for (int i = 0; i < 16; i++)
+        {
+            byte nextCarry = (byte)((t[i] & 0x80) >> 7);
+            r[i] = (byte)((t[i] << 1) | carry);
+            carry = nextCarry;
+        }
+
+        // 如果最高位（最后一个字节的最高位）有进位，则异或多项式
+        if (carry != 0)
+        {
+            r[0] ^= 0x87;
+        }
         return r;
     }
 
