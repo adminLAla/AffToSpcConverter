@@ -11,6 +11,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using NAudio.Vorbis;
+using NAudio.Wave;
 using AssetsTools.NET;
 using AssetsTools.NET.Extra;
 using AssetsTools.NET.Texture;
@@ -474,12 +476,31 @@ public static class UnitySongResourcePacker
         string baseName = request.BaseName?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(baseName))
             throw new Exception("BaseName 不能为空。");
-        if (!baseName.All(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-'))
-            throw new Exception("BaseName 仅允许字母、数字、下划线、连字符。");
+        if (!baseName.All(ch =>
+            (ch >= 'A' && ch <= 'Z') ||
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch is '_' or '-'))
+            throw new Exception("BaseName 仅允许英文大小写字母、数字、下划线、连字符，且不能包含空格或中文字符。");
 
         string bgmExt = Path.GetExtension(request.BgmFilePath).ToLowerInvariant();
         if (bgmExt is not ".ogg" and not ".wav")
             throw new Exception($"BGM 仅支持 .ogg/.wav：{request.BgmFilePath}");
+
+        if (double.IsNaN(request.PreviewStartSeconds) || double.IsInfinity(request.PreviewStartSeconds))
+            throw new Exception("试听区间起始值无效。请输入合法数字。");
+        if (double.IsNaN(request.PreviewEndSeconds) || double.IsInfinity(request.PreviewEndSeconds))
+            throw new Exception("试听区间结束值无效。请输入合法数字。");
+        if (request.PreviewStartSeconds < 0)
+            throw new Exception("试听区间起始值不能小于 0。");
+        if (request.PreviewEndSeconds < 0)
+            throw new Exception("试听区间结束值不能小于 0。");
+        if (request.PreviewStartSeconds > request.PreviewEndSeconds)
+            throw new Exception("试听区间起始值不得超过结束值。");
+
+        double bgmDurationSeconds = ReadAudioDurationSeconds(request.BgmFilePath);
+        if (request.PreviewEndSeconds > bgmDurationSeconds + 1e-6)
+            throw new Exception($"试听区间结束值不能超过曲目时长（{bgmDurationSeconds:F3} 秒）。");
 
         if (string.IsNullOrWhiteSpace(request.SongTitleEnglish))
             throw new Exception("请填写曲名(English)，用于 resources.assets / DynamicStringMapping 显示。");
@@ -505,9 +526,26 @@ public static class UnitySongResourcePacker
             if (string.IsNullOrWhiteSpace(chart.SourceChartFilePath) || !File.Exists(chart.SourceChartFilePath))
                 throw new FileNotFoundException($"谱面文件不存在：{chart.SourceChartFilePath}");
             string chartExt = Path.GetExtension(chart.SourceChartFilePath).ToLowerInvariant();
-            if (chartExt is not ".txt" and not ".spc")
-                throw new Exception($"谱面文件仅支持 .txt/.spc：{chart.SourceChartFilePath}");
+            if (chartExt is not ".spc")
+                throw new Exception($"谱面文件仅支持 .spc：{chart.SourceChartFilePath}");
         }
+    }
+
+    // 读取音频时长（秒）。支持 .ogg/.wav。
+    internal static double ReadAudioDurationSeconds(string audioFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(audioFilePath) || !File.Exists(audioFilePath))
+            throw new FileNotFoundException($"音频文件不存在：{audioFilePath}");
+
+        string ext = Path.GetExtension(audioFilePath).ToLowerInvariant();
+        using WaveStream reader = ext switch
+        {
+            ".ogg" => new VorbisWaveReader(audioFilePath),
+            ".wav" => new WaveFileReader(audioFilePath),
+            _ => new AudioFileReader(audioFilePath)
+        };
+
+        return Math.Max(0d, reader.TotalTime.TotalSeconds);
     }
 
     // 构建Generated Resource 文件。

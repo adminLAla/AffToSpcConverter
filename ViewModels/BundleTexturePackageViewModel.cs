@@ -74,10 +74,10 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
     private double _previewEndSeconds = 15;
     public double PreviewEndSeconds { get => _previewEndSeconds; set { if (_previewEndSeconds == value) return; _previewEndSeconds = value; OnPropertyChanged(); } }
 
-    private string _displayNameSectionIndicator = "0";
+    private string _displayNameSectionIndicator = "A";
     public string DisplayNameSectionIndicator { get => _displayNameSectionIndicator; set { if (_displayNameSectionIndicator == value) return; _displayNameSectionIndicator = value; OnPropertyChanged(); } }
 
-    private string _displayArtistSectionIndicator = "0";
+    private string _displayArtistSectionIndicator = "A";
     public string DisplayArtistSectionIndicator { get => _displayArtistSectionIndicator; set { if (_displayArtistSectionIndicator == value) return; _displayArtistSectionIndicator = value; OnPropertyChanged(); } }
 
     private string _songTitleEnglish = "";
@@ -86,7 +86,7 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
     private string _songArtistEnglish = "";
     public string SongArtistEnglish { get => _songArtistEnglish; set { if (_songArtistEnglish == value) return; _songArtistEnglish = value; OnPropertyChanged(); } }
 
-    private int _gameplayBackground;
+    private int _gameplayBackground = 3;
     public int GameplayBackground { get => _gameplayBackground; set { if (_gameplayBackground == value) return; _gameplayBackground = value; OnPropertyChanged(); } }
 
     private int _rewardStyle;
@@ -126,11 +126,18 @@ public class BundleTexturePackageViewModel : INotifyPropertyChanged
         set { if (_keepJacketOriginalSize == value) return; _keepJacketOriginalSize = value; OnPropertyChanged(); }
     }
 
-    private string _status = "请先选择游戏目录（In Falsus Demo），程序会自动定位 bundle/sharedassets0.assets，并输出到 SongData 文件夹。";
+    private string _status = "等待导出或操作日志。";
     public string Status
     {
         get => _status;
         set { if (_status == value) return; _status = value; OnPropertyChanged(); }
+    }
+
+    private string _operationGuide = "1. 导入游戏所在目录\n2. 导入曲绘\n3. 导入 BGM\n4. 继续完成其余信息后导出";
+    public string OperationGuide
+    {
+        get => _operationGuide;
+        set { if (_operationGuide == value) return; _operationGuide = value; OnPropertyChanged(); }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

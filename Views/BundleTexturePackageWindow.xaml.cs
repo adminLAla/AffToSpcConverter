@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,12 +27,104 @@ public partial class BundleTexturePackageWindow : Window
         InitializeComponent();
         DataContext = _vm;
 
+        _vm.PropertyChanged += Vm_PropertyChanged;
+        _vm.ChartRows.CollectionChanged += ChartRows_CollectionChanged;
+
         // 预置一条谱面项，减少首次使用时的操作步骤。
         if (_vm.ChartRows.Count == 0)
         {
             var row = CreateDefaultChartRow();
             _vm.ChartRows.Add(row);
             _vm.SelectedChartRow = row;
+        }
+
+        foreach (var row in _vm.ChartRows)
+            row.PropertyChanged += ChartRow_PropertyChanged;
+
+        UpdateOperationGuide();
+    }
+
+    // 关闭窗口时主动释放持有的数据与事件订阅，降低内存驻留。
+    protected override void OnClosed(EventArgs e)
+    {
+        try
+        {
+            ReleaseWindowResources();
+        }
+        finally
+        {
+            base.OnClosed(e);
+        }
+    }
+
+    private void ReleaseWindowResources()
+    {
+        _vm.PropertyChanged -= Vm_PropertyChanged;
+        _vm.ChartRows.CollectionChanged -= ChartRows_CollectionChanged;
+
+        foreach (var row in _vm.ChartRows)
+            row.PropertyChanged -= ChartRow_PropertyChanged;
+
+        _bundleScan = null;
+        _vm.EmptySongSlots.Clear();
+        _vm.JacketTemplates.Clear();
+        _vm.ChartRows.Clear();
+        _vm.SelectedSongSlot = null;
+        _vm.SelectedJacketTemplate = null;
+        _vm.SelectedChartRow = null;
+        _vm.Status = "";
+        _vm.OperationGuide = "";
+        DataContext = null;
+
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
+    private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(BundleTexturePackageViewModel.GameDirectory)
+            or nameof(BundleTexturePackageViewModel.BundleFilePath)
+            or nameof(BundleTexturePackageViewModel.SharedAssetsFilePath)
+            or nameof(BundleTexturePackageViewModel.ResourcesAssetsFilePath)
+            or nameof(BundleTexturePackageViewModel.JacketImageFilePath)
+            or nameof(BundleTexturePackageViewModel.BgmFilePath)
+            or nameof(BundleTexturePackageViewModel.BaseName)
+            or nameof(BundleTexturePackageViewModel.SongTitleEnglish)
+            or nameof(BundleTexturePackageViewModel.SongArtistEnglish)
+            or nameof(BundleTexturePackageViewModel.SelectedSongSlot)
+            or nameof(BundleTexturePackageViewModel.SelectedJacketTemplate))
+        {
+            UpdateOperationGuide();
+        }
+    }
+
+    private void ChartRows_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+        {
+            foreach (var item in e.OldItems.OfType<BundleTexturePackageChartRowViewModel>())
+                item.PropertyChanged -= ChartRow_PropertyChanged;
+        }
+
+        if (e.NewItems != null)
+        {
+            foreach (var item in e.NewItems.OfType<BundleTexturePackageChartRowViewModel>())
+                item.PropertyChanged += ChartRow_PropertyChanged;
+        }
+
+        UpdateOperationGuide();
+    }
+
+    private void ChartRow_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(BundleTexturePackageChartRowViewModel.Enabled)
+            or nameof(BundleTexturePackageChartRowViewModel.ChartFilePath)
+            or nameof(BundleTexturePackageChartRowViewModel.ChartSlotIndex)
+            or nameof(BundleTexturePackageChartRowViewModel.DifficultyFlag))
+        {
+            UpdateOperationGuide();
         }
     }
 
@@ -41,6 +135,7 @@ public partial class BundleTexturePackageWindow : Window
         if (dialog.ShowDialog() != true) return;
 
         ApplyGameDirectory(dialog.FolderName);
+        UpdateOperationGuide();
     }
 
     // 选择新增歌曲曲绘（用于写入新 Texture2D）。
@@ -55,6 +150,7 @@ public partial class BundleTexturePackageWindow : Window
 
         _vm.JacketImageFilePath = dialog.FileName;
         _vm.Status = "已导入曲绘图片。导出时会自动写入新增 Texture2D。";
+        UpdateOperationGuide();
     }
 
     // 选择新增歌曲 BGM（.ogg/.wav），导出时会按游戏约定写入 .wav 映射键。
@@ -68,7 +164,36 @@ public partial class BundleTexturePackageWindow : Window
         if (dialog.ShowDialog() != true) return;
 
         _vm.BgmFilePath = dialog.FileName;
-        _vm.Status = $"已导入 BGM：{Path.GetFileName(dialog.FileName)}（导出时会使用 .wav 映射键）。";
+
+        double bgmDurationSeconds;
+        try
+        {
+            bgmDurationSeconds = UnitySongResourcePacker.ReadAudioDurationSeconds(dialog.FileName);
+        }
+        catch
+        {
+            _vm.Status = $"已导入 BGM：{Path.GetFileName(dialog.FileName)}（导出时会使用 .wav 映射键）。";
+            UpdateOperationGuide();
+            return;
+        }
+
+        const double defaultPreviewSpanSeconds = 15d;
+        double start = _vm.PreviewStartSeconds;
+        if (double.IsNaN(start) || double.IsInfinity(start) || start < 0)
+            start = 0;
+        if (start > bgmDurationSeconds)
+            start = 0;
+
+        double end = Math.Min(bgmDurationSeconds, start + defaultPreviewSpanSeconds);
+        if (end < start)
+            end = start;
+
+        _vm.PreviewStartSeconds = start;
+        _vm.PreviewEndSeconds = end;
+        _vm.Status =
+            $"已导入 BGM：{Path.GetFileName(dialog.FileName)}（导出时会使用 .wav 映射键）。\n" +
+            $"试听区间已按曲长设置为 {start:0.###} ~ {end:0.###} 秒（曲长 {bgmDurationSeconds:0.###} 秒，默认跨度 15 秒）。";
+        UpdateOperationGuide();
     }
 
     // 旧版手动选择导出目录入口（当前流程固定输出到游戏根目录\SongData，保留方法以兼容旧 XAML 事件名）。
@@ -112,9 +237,10 @@ public partial class BundleTexturePackageWindow : Window
         _vm.ChartRows.Remove(_vm.SelectedChartRow);
         _vm.SelectedChartRow = _vm.ChartRows.LastOrDefault();
         ChartRowsGrid.SelectedItem = _vm.SelectedChartRow;
+        UpdateOperationGuide();
     }
 
-    // 为当前选中的 ChartInfo 行选择谱面文件（.txt/.spc）。
+    // 为当前选中的 ChartInfo 行选择谱面文件（.spc）。
     private void BtnBrowseSelectedChart_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.SelectedChartRow == null)
@@ -126,22 +252,17 @@ public partial class BundleTexturePackageWindow : Window
         var dialog = new OpenFileDialog
         {
             Title = "导入谱面文件",
-            Filter = "谱面文件 (*.spc;*.txt)|*.spc;*.txt|SPC 谱面 (*.spc)|*.spc|TXT 谱面 (*.txt)|*.txt"
+            Filter = "SPC 谱面 (*.spc)|*.spc"
         };
         if (dialog.ShowDialog() != true) return;
 
         _vm.SelectedChartRow.ChartFilePath = dialog.FileName;
         _vm.Status = $"已为槽位 {_vm.SelectedChartRow.ChartSlotIndex} 选择谱面：{Path.GetFileName(dialog.FileName)}";
+        UpdateOperationGuide();
     }
 
     // 当鼠标位于 ChartInfos DataGrid 上时，将滚轮滚动转发给外层页面 ScrollViewer。
     private void ChartRowsGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        ForwardWheelToMainScrollViewer(e);
-    }
-
-    // 当鼠标位于“状态”区域内层滚动容器时，将滚轮滚动转发给外层页面 ScrollViewer。
-    private void StatusScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         ForwardWheelToMainScrollViewer(e);
     }
@@ -231,6 +352,7 @@ public partial class BundleTexturePackageWindow : Window
             }
 
             _vm.Status = sb.ToString().TrimEnd();
+            UpdateOperationGuide();
 
             MessageBox.Show(
                 $"新增歌曲资源导出成功。\n\nbundle：{Path.GetFileName(result.OutputBundlePath)}\nsharedassets：{Path.GetFileName(result.OutputSharedAssetsPath)}\nresources：{Path.GetFileName(result.OutputResourcesAssetsPath)}\n新增映射：{result.AddedMappingEntries.Count} 项",
@@ -244,8 +366,54 @@ public partial class BundleTexturePackageWindow : Window
             string summary = BuildExceptionSummary(ex);
             string details = BuildExceptionDetails(ex);
             _vm.Status = $"导出失败：\n{details}";
+            UpdateOperationGuide();
             MessageBox.Show($"导出失败：\n{summary}\n\n详细信息已写入下方状态区。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    // 根据当前表单完成度更新右侧“操作步骤”提示。
+    private void UpdateOperationGuide()
+    {
+        bool hasGameDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory);
+        bool hasJacket = !string.IsNullOrWhiteSpace(_vm.JacketImageFilePath);
+        bool hasBgm = !string.IsNullOrWhiteSpace(_vm.BgmFilePath);
+        bool hasSlotAndTemplate = _vm.SelectedSongSlot != null && _vm.SelectedJacketTemplate != null;
+        bool hasBasicMeta =
+            !string.IsNullOrWhiteSpace(_vm.BaseName) &&
+            !string.IsNullOrWhiteSpace(_vm.SongTitleEnglish) &&
+            !string.IsNullOrWhiteSpace(_vm.SongArtistEnglish);
+        bool hasAtLeastOneChart = _vm.ChartRows.Any(x => x.Enabled && !string.IsNullOrWhiteSpace(x.ChartFilePath));
+
+        var steps = new List<(bool done, string text)>
+        {
+            (hasGameDirectory, "导入游戏所在目录（In Falsus Demo）"),
+            (hasSlotAndTemplate, "确认空槽与曲绘模板（必要时点“扫描.bundle”）"),
+            (hasJacket, "导入曲绘"),
+            (hasBgm, "导入 BGM"),
+            (hasBasicMeta, "填写 BaseName / 曲名(English) / 曲师(English)"),
+            (hasAtLeastOneChart, "至少配置 1 条启用谱面并选择谱面文件")
+        };
+
+        string? nextStep = steps.FirstOrDefault(x => !x.done).text;
+        if (string.IsNullOrWhiteSpace(nextStep))
+            nextStep = "所有必填步骤已完成，可点击“导出”。";
+
+        var sb = new StringBuilder();
+        sb.AppendLine("请按顺序完成以下操作：");
+        for (int i = 0; i < steps.Count; i++)
+        {
+            string mark = steps[i].done ? "✅" : "⬜";
+            sb.AppendLine($"{mark} {i + 1}. {steps[i].text}");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("可选操作：");
+        sb.AppendLine("- 点击“照抄已有曲目设置”快速填充 4 个显示/行为字段。" );
+        sb.AppendLine("- 若自动定位不完整，可重新点击“选择目录”或“扫描.bundle”。");
+        sb.AppendLine();
+        sb.AppendLine($"下一步：{nextStep}");
+
+        _vm.OperationGuide = sb.ToString().TrimEnd();
     }
 
     // 扫描当前 .bundle，并刷新空槽列表与曲绘模板列表。
