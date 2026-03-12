@@ -137,6 +137,18 @@ public partial class BundleTexturePackageWindow : Window
     // 当鼠标位于 ChartInfos DataGrid 上时，将滚轮滚动转发给外层页面 ScrollViewer。
     private void ChartRowsGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        ForwardWheelToMainScrollViewer(e);
+    }
+
+    // 当鼠标位于“状态”区域内层滚动容器时，将滚轮滚动转发给外层页面 ScrollViewer。
+    private void StatusScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        ForwardWheelToMainScrollViewer(e);
+    }
+
+    // 将滚轮增量统一转发到外层页面滚动容器。
+    private void ForwardWheelToMainScrollViewer(MouseWheelEventArgs e)
+    {
         if (MainScrollViewer == null) return;
 
         double targetOffset = MainScrollViewer.VerticalOffset - e.Delta;

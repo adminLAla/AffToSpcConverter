@@ -215,7 +215,8 @@
 
                 <GroupBox Header="状态" Margin="0,0,0,0">
                     <Border BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8" Background="#FAFAFA" Margin="10">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" Height="260">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Height="260"
+                                      PreviewMouseWheel="StatusScrollViewer_PreviewMouseWheel">
                             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#555555"/>
                         </ScrollViewer>
                     </Border>
