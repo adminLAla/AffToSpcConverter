@@ -459,6 +459,11 @@ public partial class MainWindow : Window
         new BundleTexturePackageWindow { Owner = this }.ShowDialog();
     }
 
+    private void MenuBatchBundle_Click(object sender, RoutedEventArgs e)
+    {
+        new BatchBundleWindow { Owner = this }.ShowDialog();
+    }
+
     // 恢复“打包谱面”写入到游戏目录的文件（回滚 *_original，并清理 sam 中新增哈希资源）。
     private void MenuRestoreSongPackedFiles_Click(object sender, RoutedEventArgs e)
     {

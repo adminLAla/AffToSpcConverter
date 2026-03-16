@@ -484,8 +484,8 @@ public static class UnitySongResourcePacker
             throw new Exception("BaseName 仅允许英文大小写字母、数字、下划线、连字符，且不能包含空格或中文字符。");
 
         string bgmExt = Path.GetExtension(request.BgmFilePath).ToLowerInvariant();
-        if (bgmExt is not ".ogg" and not ".wav")
-            throw new Exception($"BGM 仅支持 .ogg/.wav：{request.BgmFilePath}");
+        if (bgmExt is not ".ogg" and not ".wav" and not ".mp3")
+            throw new Exception($"BGM 仅支持 .ogg/.wav/.mp3：{request.BgmFilePath}");
 
         if (double.IsNaN(request.PreviewStartSeconds) || double.IsInfinity(request.PreviewStartSeconds))
             throw new Exception("试听区间起始值无效。请输入合法数字。");
@@ -542,6 +542,7 @@ public static class UnitySongResourcePacker
         {
             ".ogg" => new VorbisWaveReader(audioFilePath),
             ".wav" => new WaveFileReader(audioFilePath),
+            ".mp3" => new Mp3FileReader(audioFilePath),
             _ => new AudioFileReader(audioFilePath)
         };
 
