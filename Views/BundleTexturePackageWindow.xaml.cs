@@ -619,7 +619,6 @@ public partial class BundleTexturePackageWindow : Window
     }
 
     // 扫描当前 .bundle，并刷新空槽列表与曲绘模板列表。
-    // 修改后的 ReloadBundleScan
     private void ReloadBundleScan()
     {
         try
@@ -694,6 +693,59 @@ public partial class BundleTexturePackageWindow : Window
         }
     }
 
+    // 根据游戏目录自动定位 if-app_Data 下的 sharedassets0.assets 与目标 bundle。
+    private void ApplyGameDirectory(string gameDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(gameDirectory))
+            return;
+
+        string root = Path.GetFullPath(gameDirectory);
+        _vm.GameDirectory = root;
+
+        string dataDir = Path.Combine(root, "if-app_Data");
+        if (!Directory.Exists(dataDir))
+        {
+            _vm.BundleFilePath = "";
+            _vm.SharedAssetsFilePath = "";
+            _vm.ResourcesAssetsFilePath = "";
+            _vm.Status = $"目录不符合预期结构：未找到 if-app_Data\n{root}";
+            MessageBox.Show("未在该目录下找到 if-app_Data。\n请选择游戏根目录（例如 In Falsus Demo）。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        string sharedAssets = Path.Combine(dataDir, "sharedassets0.assets");
+        string resourcesAssets = Path.Combine(dataDir, "resources.assets");
+        string bundleDir = Path.Combine(dataDir, "StreamingAssets", "aa", "StandaloneWindows64");
+        string defaultBundle = Path.Combine(bundleDir, "3d6c628d95a26a13f4e5a73be91cb4f7.bundle");
+
+        _vm.SharedAssetsFilePath = File.Exists(sharedAssets) ? sharedAssets : "";
+        _vm.ResourcesAssetsFilePath = File.Exists(resourcesAssets) ? resourcesAssets : "";
+        _vm.BundleFilePath = ResolveTargetSongBundlePath(bundleDir, defaultBundle) ?? "";
+
+        _vm.OutputDirectory = Path.Combine(root, "SongData");
+
+        var notes = new List<string>();
+        if (!File.Exists(sharedAssets))
+            notes.Add("未找到 if-app_Data\\sharedassets0.assets");
+        if (!File.Exists(resourcesAssets))
+            notes.Add("未找到 if-app_Data\\resources.assets");
+        if (string.IsNullOrWhiteSpace(_vm.BundleFilePath))
+            notes.Add("未找到目标歌曲数据库 bundle（默认 3d6c...bundle 及目录内 .bundle 已尝试）。");
+
+        if (notes.Count > 0)
+        {
+            _bundleScan = null;
+            _vm.EmptySongSlots.Clear();
+            _vm.JacketTemplates.Clear();
+            _vm.SelectedSongSlot = null;
+            _vm.SelectedJacketTemplate = null;
+            _vm.Status = "自动定位未完成：\n" + string.Join("\n", notes);
+            return;
+        }
+
+        ReloadBundleScan();
+    }
+
     // 根据当前界面输入构造后端导出请求。
     // 修改 BuildRequestFromUi，允许覆盖导入
     private NewSongPackRequest BuildRequestFromUi()
@@ -749,60 +801,6 @@ public partial class BundleTexturePackageWindow : Window
             Charts = charts,
             AutoRenameWhenTargetLocked = _vm.AutoRenameWhenTargetLocked
         };
-    }
-
-
-    // 根据游戏目录自动定位 if-app_Data 下的 sharedassets0.assets 与目标 bundle。
-    private void ApplyGameDirectory(string gameDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(gameDirectory))
-            return;
-
-        string root = Path.GetFullPath(gameDirectory);
-        _vm.GameDirectory = root;
-
-        string dataDir = Path.Combine(root, "if-app_Data");
-        if (!Directory.Exists(dataDir))
-        {
-            _vm.BundleFilePath = "";
-            _vm.SharedAssetsFilePath = "";
-            _vm.ResourcesAssetsFilePath = "";
-            _vm.Status = $"目录不符合预期结构：未找到 if-app_Data\n{root}";
-            MessageBox.Show("未在该目录下找到 if-app_Data。\n请选择游戏根目录（例如 In Falsus Demo）。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        string sharedAssets = Path.Combine(dataDir, "sharedassets0.assets");
-        string resourcesAssets = Path.Combine(dataDir, "resources.assets");
-        string bundleDir = Path.Combine(dataDir, "StreamingAssets", "aa", "StandaloneWindows64");
-        string defaultBundle = Path.Combine(bundleDir, "3d6c628d95a26a13f4e5a73be91cb4f7.bundle");
-
-        _vm.SharedAssetsFilePath = File.Exists(sharedAssets) ? sharedAssets : "";
-        _vm.ResourcesAssetsFilePath = File.Exists(resourcesAssets) ? resourcesAssets : "";
-        _vm.BundleFilePath = ResolveTargetSongBundlePath(bundleDir, defaultBundle) ?? "";
-
-        _vm.OutputDirectory = Path.Combine(root, "SongData");
-
-        var notes = new List<string>();
-        if (!File.Exists(sharedAssets))
-            notes.Add("未找到 if-app_Data\\sharedassets0.assets");
-        if (!File.Exists(resourcesAssets))
-            notes.Add("未找到 if-app_Data\\resources.assets");
-        if (string.IsNullOrWhiteSpace(_vm.BundleFilePath))
-            notes.Add("未找到目标歌曲数据库 bundle（默认 3d6c...bundle 及目录内 .bundle 已尝试）。");
-
-        if (notes.Count > 0)
-        {
-            _bundleScan = null;
-            _vm.EmptySongSlots.Clear();
-            _vm.JacketTemplates.Clear();
-            _vm.SelectedSongSlot = null;
-            _vm.SelectedJacketTemplate = null;
-            _vm.Status = "自动定位未完成：\n" + string.Join("\n", notes);
-            return;
-        }
-
-        ReloadBundleScan();
     }
 
     // 在固定目录下优先定位指定 hash 的 bundle，找不到时回退到目录内第一个 bundle。
