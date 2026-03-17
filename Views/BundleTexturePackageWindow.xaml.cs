@@ -619,6 +619,7 @@ public partial class BundleTexturePackageWindow : Window
     }
 
     // 扫描当前 .bundle，并刷新空槽列表与曲绘模板列表。
+    // 修改后的 ReloadBundleScan
     private void ReloadBundleScan()
     {
         try
@@ -626,41 +627,58 @@ public partial class BundleTexturePackageWindow : Window
             if (string.IsNullOrWhiteSpace(_vm.BundleFilePath))
                 throw new Exception("请先导入 .bundle 文件。");
 
-            _vm.Status = "正在扫描 .bundle（SongDatabase 空槽 / 曲绘模板）...";
+            _vm.Status = "正在扫描 .bundle（SongDatabase 槽位 / 曲绘模板）...";
 
             int? prevSlot = _vm.SelectedSongSlot?.SlotIndex;
             long? prevTexPathId = _vm.SelectedJacketTemplate?.TexturePathId;
 
             _bundleScan = UnitySongResourcePacker.ScanBundle(_vm.BundleFilePath);
 
+            // 1. 显示所有槽位（不再只筛选空槽）
             _vm.EmptySongSlots.Clear();
-            foreach (var slot in _bundleScan.Slots.Where(x => x.IsEmpty && x.SlotIndex >= 2))
+            foreach (var slot in _bundleScan.Slots.Where(x => x.SlotIndex >= 2))
+            {
+                // 格式: [slot_id]<basename>(id=_id,Charts=_charts)
+                string basename = string.IsNullOrWhiteSpace(slot.BaseName) ? "空槽" : slot.BaseName;
+                //slot.DisplayText = $"[{slot.SlotIndex:D2}]{basename}(id={slot.SongIdValue},Charts={slot.ChartCount})";
                 _vm.EmptySongSlots.Add(slot);
+            }
 
+            // 2. 曲绘模板逻辑不变
             _vm.JacketTemplates.Clear();
             foreach (var template in _bundleScan.JacketTemplates)
                 _vm.JacketTemplates.Add(template);
 
-            _vm.SelectedSongSlot = _vm.EmptySongSlots.FirstOrDefault(x => x.SlotIndex == prevSlot) ?? _vm.EmptySongSlots.FirstOrDefault();
-            _vm.SelectedJacketTemplate = _vm.JacketTemplates.FirstOrDefault(x => x.TexturePathId == prevTexPathId) ?? _vm.JacketTemplates.FirstOrDefault();
+            // 3. 优先选中空槽，否则保留原有选择
+            var emptySlot = _vm.EmptySongSlots.FirstOrDefault(x => x.IsEmpty && x.SlotIndex == prevSlot)
+                            ?? _vm.EmptySongSlots.FirstOrDefault(x => x.IsEmpty)
+                            ?? _vm.EmptySongSlots.FirstOrDefault(x => x.SlotIndex == prevSlot)
+                            ?? _vm.EmptySongSlots.FirstOrDefault();
+            _vm.SelectedSongSlot = emptySlot;
+
+            _vm.SelectedJacketTemplate = _vm.JacketTemplates.FirstOrDefault(x => x.TexturePathId == prevTexPathId)
+                                         ?? _vm.JacketTemplates.FirstOrDefault();
 
             if (_vm.EmptySongSlots.Count == 0)
             {
-                _vm.Status = "扫描完成，但未找到空槽（allSongInfo 中没有符合条件的空项）。";
+                _vm.Status = "扫描完成，但未找到可用槽位（allSongInfo 中没有符合条件的项）。";
                 return;
             }
 
             if (_vm.JacketTemplates.Count == 0)
             {
                 _vm.Status =
-                    $"扫描完成：找到 {_bundleScan.Slots.Count} 个歌曲槽位，其中空槽 {_vm.EmptySongSlots.Count} 个；" +
+                    $"扫描完成：找到 {_bundleScan.Slots.Count} 个歌曲槽位；" +
                     "但未找到可用于复制的曲绘模板（需同名 Texture2D + Material）。";
                 return;
             }
 
+            int usedCount = _bundleScan.Slots.Count(x => !x.IsEmpty && x.SlotIndex >= 2);
+            int emptyCount = _bundleScan.Slots.Count(x => x.IsEmpty && x.SlotIndex >= 2);
+
             _vm.Status =
                 $"扫描完成：SongDatabase 位于 {_bundleScan.SongDatabaseAssetsFileName}，PathID={_bundleScan.SongDatabasePathId}。\n" +
-                $"总槽位 {_bundleScan.Slots.Count} 个，空槽 {_vm.EmptySongSlots.Count} 个（已锁定保留槽 00/01，请手动选择）。\n" +
+                $"总槽位 {_bundleScan.Slots.Count} 个，空槽 {emptyCount} 个，已占用 {usedCount} 个（已锁定保留槽 00/01，请手动选择）。\n" +
                 $"可用曲绘模板 {_vm.JacketTemplates.Count} 个（同名 Texture2D + Material）。";
         }
         catch (Exception ex)
@@ -675,6 +693,64 @@ public partial class BundleTexturePackageWindow : Window
             MessageBox.Show($"扫描 .bundle 失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    // 根据当前界面输入构造后端导出请求。
+    // 修改 BuildRequestFromUi，允许覆盖导入
+    private NewSongPackRequest BuildRequestFromUi()
+    {
+        if (_vm.ChartRows.Count > MaxChartRowCount)
+            throw new Exception($"谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
+
+        if (_bundleScan == null)
+            throw new Exception("请先扫描 .bundle 并选择槽位与曲绘模板。");
+        if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
+            throw new Exception("请先导入 sharedassets0.assets。");
+        if (string.IsNullOrWhiteSpace(_vm.ResourcesAssetsFilePath))
+            throw new Exception("请先定位 resources.assets。");
+        if (string.IsNullOrWhiteSpace(_vm.JacketImageFilePath))
+            throw new Exception("请先导入曲绘。");
+        if (string.IsNullOrWhiteSpace(_vm.BgmFilePath))
+            throw new Exception("请先导入 BGM。");
+        if (string.IsNullOrWhiteSpace(_vm.OutputDirectory))
+            throw new Exception("请选择导出文件夹。");
+        if (_vm.SelectedSongSlot == null)
+            throw new Exception("请选择一个槽位。"); // 允许任意槽位
+        if (_vm.SelectedJacketTemplate == null)
+            throw new Exception("请选择一个曲绘模板。");
+
+        var charts = BuildChartItemsFromRows();
+        if (charts.Count > MaxChartRowCount)
+            throw new Exception($"启用的谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
+        if (charts.Count == 0)
+            throw new Exception("请至少启用并配置一个谱面项。");
+
+        return new NewSongPackRequest
+        {
+            BundleFilePath = _vm.BundleFilePath,
+            SharedAssetsFilePath = _vm.SharedAssetsFilePath,
+            ResourcesAssetsFilePath = _vm.ResourcesAssetsFilePath,
+            OutputDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory)
+                ? Path.Combine(_vm.GameDirectory, "SongData")
+                : _vm.OutputDirectory,
+            JacketImageFilePath = _vm.JacketImageFilePath,
+            BgmFilePath = _vm.BgmFilePath,
+            BaseName = (_vm.BaseName ?? "").Trim(),
+            KeepJacketOriginalSize = _vm.KeepJacketOriginalSize,
+            SelectedSlot = _vm.SelectedSongSlot, // 允许覆盖
+            JacketTemplate = _vm.SelectedJacketTemplate,
+            PreviewStartSeconds = _vm.PreviewStartSeconds,
+            PreviewEndSeconds = _vm.PreviewEndSeconds,
+            DisplayNameSectionIndicator = _vm.DisplayNameSectionIndicator ?? "",
+            DisplayArtistSectionIndicator = _vm.DisplayArtistSectionIndicator ?? "",
+            SongTitleEnglish = (_vm.SongTitleEnglish ?? "").Trim(),
+            SongArtistEnglish = (_vm.SongArtistEnglish ?? "").Trim(),
+            GameplayBackground = _vm.GameplayBackground,
+            RewardStyle = _vm.RewardStyle,
+            Charts = charts,
+            AutoRenameWhenTargetLocked = _vm.AutoRenameWhenTargetLocked
+        };
+    }
+
 
     // 根据游戏目录自动定位 if-app_Data 下的 sharedassets0.assets 与目标 bundle。
     private void ApplyGameDirectory(string gameDirectory)
@@ -798,62 +874,6 @@ public partial class BundleTexturePackageWindow : Window
         okButton.Click += (_, _) => dialog.DialogResult = true;
 
         return dialog.ShowDialog() == true ? listBox.SelectedItem as SongDatabaseSlotInfo : null;
-    }
-
-    // 根据当前界面输入构造后端导出请求。
-    private NewSongPackRequest BuildRequestFromUi()
-    {
-        if (_vm.ChartRows.Count > MaxChartRowCount)
-            throw new Exception($"谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
-
-        if (_bundleScan == null)
-            throw new Exception("请先扫描 .bundle 并选择空槽与曲绘模板。");
-        if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
-            throw new Exception("请先导入 sharedassets0.assets。");
-        if (string.IsNullOrWhiteSpace(_vm.ResourcesAssetsFilePath))
-            throw new Exception("请先定位 resources.assets。");
-        if (string.IsNullOrWhiteSpace(_vm.JacketImageFilePath))
-            throw new Exception("请先导入曲绘。");
-        if (string.IsNullOrWhiteSpace(_vm.BgmFilePath))
-            throw new Exception("请先导入 BGM。");
-        if (string.IsNullOrWhiteSpace(_vm.OutputDirectory))
-            throw new Exception("请选择导出文件夹。");
-        if (_vm.SelectedSongSlot == null)
-            throw new Exception("请选择一个空槽。");
-        if (_vm.SelectedJacketTemplate == null)
-            throw new Exception("请选择一个曲绘模板。");
-
-        var charts = BuildChartItemsFromRows();
-        if (charts.Count > MaxChartRowCount)
-            throw new Exception($"启用的谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
-        if (charts.Count == 0)
-            throw new Exception("请至少启用并配置一个谱面项。");
-
-        return new NewSongPackRequest
-        {
-            BundleFilePath = _vm.BundleFilePath,
-            SharedAssetsFilePath = _vm.SharedAssetsFilePath,
-            ResourcesAssetsFilePath = _vm.ResourcesAssetsFilePath,
-            OutputDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory)
-                ? Path.Combine(_vm.GameDirectory, "SongData")
-                : _vm.OutputDirectory,
-            JacketImageFilePath = _vm.JacketImageFilePath,
-            BgmFilePath = _vm.BgmFilePath,
-            BaseName = (_vm.BaseName ?? "").Trim(),
-            KeepJacketOriginalSize = _vm.KeepJacketOriginalSize,
-            SelectedSlot = _vm.SelectedSongSlot,
-            JacketTemplate = _vm.SelectedJacketTemplate,
-            PreviewStartSeconds = _vm.PreviewStartSeconds,
-            PreviewEndSeconds = _vm.PreviewEndSeconds,
-            DisplayNameSectionIndicator = _vm.DisplayNameSectionIndicator ?? "",
-            DisplayArtistSectionIndicator = _vm.DisplayArtistSectionIndicator ?? "",
-            SongTitleEnglish = (_vm.SongTitleEnglish ?? "").Trim(),
-            SongArtistEnglish = (_vm.SongArtistEnglish ?? "").Trim(),
-            GameplayBackground = _vm.GameplayBackground,
-            RewardStyle = _vm.RewardStyle,
-            Charts = charts,
-            AutoRenameWhenTargetLocked = _vm.AutoRenameWhenTargetLocked
-        };
     }
 
     // 从表格行构造 ChartInfos 与谱面资源映射输入。

@@ -466,8 +466,8 @@ public static class UnitySongResourcePacker
         ValidateImagePath(request.JacketImageFilePath);
         if (string.IsNullOrWhiteSpace(request.BgmFilePath) || !File.Exists(request.BgmFilePath))
             throw new FileNotFoundException($"BGM 文件不存在：{request.BgmFilePath}");
-        if (request.SelectedSlot == null || !request.SelectedSlot.IsEmpty)
-            throw new Exception("请选择空槽。");
+        //if (request.SelectedSlot == null || !request.SelectedSlot.IsEmpty)
+        //    throw new Exception("请选择空槽。");
         if (request.SelectedSlot.SlotIndex < 2)
             throw new Exception("槽位 00/01 为保留槽位，请选择 02-76 的空槽。");
         if (request.JacketTemplate == null)
@@ -1916,25 +1916,46 @@ public static class UnitySongResourcePacker
         RawStreamingAssetsMappingMonoBehaviourData raw,
         IReadOnlyList<NewSongMappingEntryResult> newEntries)
     {
+        // 先复制原有条目
         var merged = new List<RawStreamingAssetsMappingMonoBehaviourData.Entry>(raw.Entries.Count + newEntries.Count);
         merged.AddRange(raw.Entries);
 
-        var existing = new HashSet<string>(
-            raw.Entries.Select(x => (x.FullLookupPath ?? "").Replace('\\', '/')),
-            StringComparer.OrdinalIgnoreCase);
+        // 用字典方便查找和更新
+        var entryDict = new Dictionary<string, RawStreamingAssetsMappingMonoBehaviourData.Entry>(
+            raw.Entries.Select(x => new KeyValuePair<string, RawStreamingAssetsMappingMonoBehaviourData.Entry>(
+            (x.FullLookupPath ?? "").Replace('\\', '/'), x)), StringComparer.OrdinalIgnoreCase);
 
         foreach (var e in newEntries)
         {
             string path = (e.FullLookupPath ?? "").Replace('\\', '/');
-            if (!existing.Add(path))
-                throw new Exception($"StreamingAssetsMapping 中已存在 FullLookupPath：{path}");
-
-            merged.Add(new RawStreamingAssetsMappingMonoBehaviourData.Entry
+            if (entryDict.TryGetValue(path, out var existing))
             {
-                FullLookupPath = path,
-                Guid = e.Guid ?? "",
-                FileLength = e.FileLength
-            });
+                // 修改已存在条目的内容
+                var updatedEntry = new RawStreamingAssetsMappingMonoBehaviourData.Entry
+                {
+                    FullLookupPath = existing.FullLookupPath,
+                    Guid = e.Guid ?? "",
+                    FileLength = e.FileLength
+                };
+                entryDict[path] = updatedEntry;
+                int index = merged.FindIndex(x => x.FullLookupPath == existing.FullLookupPath);
+                if (index >= 0)
+                {
+                    merged[index] = updatedEntry;
+                }
+            }
+            else
+            {
+                // 新增条目
+                var newEntry = new RawStreamingAssetsMappingMonoBehaviourData.Entry
+                {
+                    FullLookupPath = path,
+                    Guid = e.Guid ?? "",
+                    FileLength = e.FileLength
+                };
+                merged.Add(newEntry);
+                entryDict[path] = newEntry;
+            }
         }
 
         using var ms = new MemoryStream(raw.OriginalBytes.Length + Math.Max(1024, newEntries.Count * 96));
@@ -2118,7 +2139,7 @@ public static class UnitySongResourcePacker
         long newJacketMaterialPathId)
     {
         var info = assetsInst.file.GetAssetInfo(songDbPathId)
-            ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
+        ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
         var baseField = am.GetBaseField(assetsInst, info, AssetReadFlags.None);
         bool enableStructureSummaryDiagnostics = false;
         string beforeSummary = enableStructureSummaryDiagnostics
@@ -3786,4 +3807,94 @@ public static class UnitySongResourcePacker
         if (ext is not ".png" and not ".jpg" and not ".jpeg")
             throw new Exception("曲绘仅支持 PNG/JPG/JPEG。");
     }
+
+    private static AssetTypeValueField CreateBlankSongInfoSlot(AssetTypeValueField templateSlot)
+    {
+        var blank = templateSlot.Clone();
+        blank = UnwrapDataField(blank);
+
+        if (TryGetField(blank, "Id", out var idField))
+            RequireSetNumberField(idField, "Value", 0);
+        RequireSetStringField(blank, "BaseName", "");
+        RequireSetNumberField(blank, "PreviewStartSeconds", 0);
+        RequireSetNumberField(blank, "PreviewEndSeconds", 0);
+        RequireSetStringField(blank, "DisplayNameSectionIndicator", "");
+        RequireSetStringField(blank, "DisplayArtistSectionIndicator", "");
+        RequireSetNumberField(blank, "GameplayBackground", 0);
+        RequireSetNumberField(blank, "RewardStyle", 0);
+
+        // 清空ChartInfos
+        if (TryGetField(blank, "ChartInfos", out var chartInfos))
+        {
+            var chartInfosArray = RequireArrayField(chartInfos);
+            ReplaceArrayElements(chartInfosArray, new List<AssetTypeValueField>());
+        }
+
+        return blank;
+    }
+
+    public static void DeleteSongSlot(string bundleFilePath, int bundleFileIndex, long songDbPathId, int slotIndex)
+    {
+        var am = new AssetsManager();
+        try
+        {
+            var bunInst = am.LoadBundleFile(bundleFilePath, unpackIfPacked: true);
+            var assetsInst = am.LoadAssetsFileFromBundle(bunInst, bundleFileIndex, loadDeps: false);
+            var info = assetsInst.file.GetAssetInfo(songDbPathId)
+                ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
+            var baseField = am.GetBaseField(assetsInst, info, AssetReadFlags.None);
+
+            var allSongInfo = RequireField(baseField, "allSongInfo");
+            var allSongInfoArray = RequireArrayField(allSongInfo);
+            var slots = GetArrayElements(allSongInfoArray);
+
+            var templateSlot = slots.FirstOrDefault() ?? throw new Exception("无可用模板");
+            var blankSlot = CreateBlankSongInfoSlot(templateSlot);
+            ReplaceArrayElementWithTemplateClone(allSongInfoArray, slotIndex, blankSlot);
+
+            info.SetNewData(baseField);
+
+            // 写回到 bundle
+            bunInst.file.BlockAndDirInfo.DirectoryInfos[bundleFileIndex].Replacer = new ContentReplacerFromAssets(assetsInst);
+            WriteBundleApplyingReplacers(bunInst.file, bunInst.originalCompression, bundleFilePath);
+        }
+        finally
+        {
+            am.UnloadAll(true);
+        }
+    }
+
+    public static void AddSongSlot(string bundleFilePath, int bundleFileIndex, long songDbPathId)
+    {
+        var am = new AssetsManager();
+        try
+        {
+            var bunInst = am.LoadBundleFile(bundleFilePath, unpackIfPacked: true);
+            var assetsInst = am.LoadAssetsFileFromBundle(bunInst, bundleFileIndex, loadDeps: false);
+            var info = assetsInst.file.GetAssetInfo(songDbPathId)
+                ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
+            var baseField = am.GetBaseField(assetsInst, info, AssetReadFlags.None);
+
+            var allSongInfo = RequireField(baseField, "allSongInfo");
+            var allSongInfoArray = RequireArrayField(allSongInfo);
+            var slots = GetArrayElements(allSongInfoArray);
+
+            var templateSlot = slots.FirstOrDefault() ?? throw new Exception("无可用模板");
+            var blankSlot = CreateBlankSongInfoSlot(templateSlot);
+            var newSlots = new List<AssetTypeValueField>(slots) { blankSlot };
+            ReplaceArrayElements(allSongInfoArray, newSlots);
+
+            info.SetNewData(baseField);
+
+            // 写回到 bundle
+            bunInst.file.BlockAndDirInfo.DirectoryInfos[bundleFileIndex].Replacer = new ContentReplacerFromAssets(assetsInst);
+            WriteBundleApplyingReplacers(bunInst.file, bunInst.originalCompression, bundleFilePath);
+        }
+        finally
+        {
+            am.UnloadAll(true);
+        }
+    }
+
+
 }
