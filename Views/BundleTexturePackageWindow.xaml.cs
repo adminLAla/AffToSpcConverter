@@ -746,63 +746,6 @@ public partial class BundleTexturePackageWindow : Window
         ReloadBundleScan();
     }
 
-    // 根据当前界面输入构造后端导出请求。
-    // 修改 BuildRequestFromUi，允许覆盖导入
-    private NewSongPackRequest BuildRequestFromUi()
-    {
-        if (_vm.ChartRows.Count > MaxChartRowCount)
-            throw new Exception($"谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
-
-        if (_bundleScan == null)
-            throw new Exception("请先扫描 .bundle 并选择槽位与曲绘模板。");
-        if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
-            throw new Exception("请先导入 sharedassets0.assets。");
-        if (string.IsNullOrWhiteSpace(_vm.ResourcesAssetsFilePath))
-            throw new Exception("请先定位 resources.assets。");
-        if (string.IsNullOrWhiteSpace(_vm.JacketImageFilePath))
-            throw new Exception("请先导入曲绘。");
-        if (string.IsNullOrWhiteSpace(_vm.BgmFilePath))
-            throw new Exception("请先导入 BGM。");
-        if (string.IsNullOrWhiteSpace(_vm.OutputDirectory))
-            throw new Exception("请选择导出文件夹。");
-        if (_vm.SelectedSongSlot == null)
-            throw new Exception("请选择一个槽位。"); // 允许任意槽位
-        if (_vm.SelectedJacketTemplate == null)
-            throw new Exception("请选择一个曲绘模板。");
-
-        var charts = BuildChartItemsFromRows();
-        if (charts.Count > MaxChartRowCount)
-            throw new Exception($"启用的谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
-        if (charts.Count == 0)
-            throw new Exception("请至少启用并配置一个谱面项。");
-
-        return new NewSongPackRequest
-        {
-            BundleFilePath = _vm.BundleFilePath,
-            SharedAssetsFilePath = _vm.SharedAssetsFilePath,
-            ResourcesAssetsFilePath = _vm.ResourcesAssetsFilePath,
-            OutputDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory)
-                ? Path.Combine(_vm.GameDirectory, "SongData")
-                : _vm.OutputDirectory,
-            JacketImageFilePath = _vm.JacketImageFilePath,
-            BgmFilePath = _vm.BgmFilePath,
-            BaseName = (_vm.BaseName ?? "").Trim(),
-            KeepJacketOriginalSize = _vm.KeepJacketOriginalSize,
-            SelectedSlot = _vm.SelectedSongSlot, // 允许覆盖
-            JacketTemplate = _vm.SelectedJacketTemplate,
-            PreviewStartSeconds = _vm.PreviewStartSeconds,
-            PreviewEndSeconds = _vm.PreviewEndSeconds,
-            DisplayNameSectionIndicator = _vm.DisplayNameSectionIndicator ?? "",
-            DisplayArtistSectionIndicator = _vm.DisplayArtistSectionIndicator ?? "",
-            SongTitleEnglish = (_vm.SongTitleEnglish ?? "").Trim(),
-            SongArtistEnglish = (_vm.SongArtistEnglish ?? "").Trim(),
-            GameplayBackground = _vm.GameplayBackground,
-            RewardStyle = _vm.RewardStyle,
-            Charts = charts,
-            AutoRenameWhenTargetLocked = _vm.AutoRenameWhenTargetLocked
-        };
-    }
-
     // 在固定目录下优先定位指定 hash 的 bundle，找不到时回退到目录内第一个 bundle。
     private static string? ResolveTargetSongBundlePath(string bundleDir, string defaultBundlePath)
     {
@@ -872,6 +815,63 @@ public partial class BundleTexturePackageWindow : Window
         okButton.Click += (_, _) => dialog.DialogResult = true;
 
         return dialog.ShowDialog() == true ? listBox.SelectedItem as SongDatabaseSlotInfo : null;
+    }
+
+    // 根据当前界面输入构造后端导出请求。
+    // 修改 BuildRequestFromUi，允许覆盖导入
+    private NewSongPackRequest BuildRequestFromUi()
+    {
+        if (_vm.ChartRows.Count > MaxChartRowCount)
+            throw new Exception($"谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
+
+        if (_bundleScan == null)
+            throw new Exception("请先扫描 .bundle 并选择槽位与曲绘模板。");
+        if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
+            throw new Exception("请先导入 sharedassets0.assets。");
+        if (string.IsNullOrWhiteSpace(_vm.ResourcesAssetsFilePath))
+            throw new Exception("请先定位 resources.assets。");
+        if (string.IsNullOrWhiteSpace(_vm.JacketImageFilePath))
+            throw new Exception("请先导入曲绘。");
+        if (string.IsNullOrWhiteSpace(_vm.BgmFilePath))
+            throw new Exception("请先导入 BGM。");
+        if (string.IsNullOrWhiteSpace(_vm.OutputDirectory))
+            throw new Exception("请选择导出文件夹。");
+        if (_vm.SelectedSongSlot == null)
+            throw new Exception("请选择一个槽位。"); // 允许任意槽位
+        if (_vm.SelectedJacketTemplate == null)
+            throw new Exception("请选择一个曲绘模板。");
+
+        var charts = BuildChartItemsFromRows();
+        if (charts.Count > MaxChartRowCount)
+            throw new Exception($"启用的谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
+        if (charts.Count == 0)
+            throw new Exception("请至少启用并配置一个谱面项。");
+
+        return new NewSongPackRequest
+        {
+            BundleFilePath = _vm.BundleFilePath,
+            SharedAssetsFilePath = _vm.SharedAssetsFilePath,
+            ResourcesAssetsFilePath = _vm.ResourcesAssetsFilePath,
+            OutputDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory)
+                ? Path.Combine(_vm.GameDirectory, "SongData")
+                : _vm.OutputDirectory,
+            JacketImageFilePath = _vm.JacketImageFilePath,
+            BgmFilePath = _vm.BgmFilePath,
+            BaseName = (_vm.BaseName ?? "").Trim(),
+            KeepJacketOriginalSize = _vm.KeepJacketOriginalSize,
+            SelectedSlot = _vm.SelectedSongSlot, // 允许覆盖
+            JacketTemplate = _vm.SelectedJacketTemplate,
+            PreviewStartSeconds = _vm.PreviewStartSeconds,
+            PreviewEndSeconds = _vm.PreviewEndSeconds,
+            DisplayNameSectionIndicator = _vm.DisplayNameSectionIndicator ?? "",
+            DisplayArtistSectionIndicator = _vm.DisplayArtistSectionIndicator ?? "",
+            SongTitleEnglish = (_vm.SongTitleEnglish ?? "").Trim(),
+            SongArtistEnglish = (_vm.SongArtistEnglish ?? "").Trim(),
+            GameplayBackground = _vm.GameplayBackground,
+            RewardStyle = _vm.RewardStyle,
+            Charts = charts,
+            AutoRenameWhenTargetLocked = _vm.AutoRenameWhenTargetLocked
+        };
     }
 
     // 从表格行构造 ChartInfos 与谱面资源映射输入。

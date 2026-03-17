@@ -2139,7 +2139,7 @@ public static class UnitySongResourcePacker
         long newJacketMaterialPathId)
     {
         var info = assetsInst.file.GetAssetInfo(songDbPathId)
-        ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
+            ?? throw new Exception($"未找到 SongDatabase：PathID={songDbPathId}");
         var baseField = am.GetBaseField(assetsInst, info, AssetReadFlags.None);
         bool enableStructureSummaryDiagnostics = false;
         string beforeSummary = enableStructureSummaryDiagnostics
