@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace AffToSpcConverter.Views;
+namespace InFalsusSongPackStudio.Views;
 
 // 自定义映射窗口，用于查看和编辑转换映射配置。
 public partial class CustomMappingWindow : Window

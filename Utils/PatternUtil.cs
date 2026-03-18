@@ -1,9 +1,9 @@
-﻿using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // 谱面模式工具，生成或处理常见的音符分布模式。
 public static class PatternUtils

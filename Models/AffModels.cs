@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
-namespace AffToSpcConverter.Models;
+namespace InFalsusSongPackStudio.Models;
 
 // AFF 的 timing 事件模型。
 public sealed record AffTiming(

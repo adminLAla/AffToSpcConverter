@@ -8,14 +8,14 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using AffToSpcConverter.Utils;
-using AffToSpcConverter.ViewModels;
+using InFalsusSongPackStudio.Utils;
+using InFalsusSongPackStudio.ViewModels;
 using Microsoft.Win32;
 using System.Text.Encodings.Web;
 using System.IO.Compression;
 using System.Text.Json;
 
-namespace AffToSpcConverter.Views;
+namespace InFalsusSongPackStudio.Views;
 
 // “打包谱面”窗口，负责新增歌曲资源的收集、校验与导出。
 public partial class BundleTexturePackageWindow : Window

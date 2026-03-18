@@ -1,4 +1,4 @@
-<Window x:Class="AffToSpcConverter.Views.PackageWindow"
+<Window x:Class="InFalsusSongPackStudio.Views.PackageWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="打包加密资源" Height="400" Width="600"

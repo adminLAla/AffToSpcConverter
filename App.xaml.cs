@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
-namespace AffToSpcConverter
+namespace InFalsusSongPackStudio
 {
     // WPF 应用入口，负责初始化全局异常日志与应用级事件。
     public partial class App : Application

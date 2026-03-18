@@ -1,11 +1,11 @@
-using AffToSpcConverter.Convert;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Convert;
+using InFalsusSongPackStudio.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // SPC 合法性校验结果，区分 Error 与 Warning 两级。
 public sealed class SpcValidationReport

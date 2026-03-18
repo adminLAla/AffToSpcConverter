@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using AffToSpcConverter.Utils;
+using InFalsusSongPackStudio.Utils;
 
-namespace AffToSpcConverter.ViewModels;
+namespace InFalsusSongPackStudio.ViewModels;
 
 // “打包谱面”窗口中的单条谱面分档行 ViewModel。
 public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChanged

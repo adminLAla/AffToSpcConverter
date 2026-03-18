@@ -1,9 +1,9 @@
-﻿using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace AffToSpcConverter.IO;
+namespace InFalsusSongPackStudio.IO;
 
 // SPC 文本写入器，负责把事件列表序列化为 .spc 文本。
 public static class SpcWriter

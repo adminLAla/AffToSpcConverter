@@ -2,12 +2,12 @@ using System;
 using System.Windows;
 using Microsoft.Win32;
 using System.IO;
-using AffToSpcConverter.Utils;
-using AffToSpcConverter.ViewModels;
+using InFalsusSongPackStudio.Utils;
+using InFalsusSongPackStudio.ViewModels;
 using System.ComponentModel;
 using System.Linq;
 
-namespace AffToSpcConverter.Views;
+namespace InFalsusSongPackStudio.Views;
 
 // 打包加密资源窗口，处理 BGM/谱面的加密与映射替换。
 public partial class PackageWindow : Window

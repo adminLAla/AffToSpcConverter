@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // 随机数工具，统一项目内随机选择与随机分布逻辑。
 public static class RandomUtil

@@ -17,7 +17,7 @@ using AssetsTools.NET;
 using AssetsTools.NET.Extra;
 using AssetsTools.NET.Texture;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // SongDatabase 中单个歌曲槽位的扫描结果信息。
 public sealed class SongDatabaseSlotInfo

@@ -1,7 +1,7 @@
-﻿using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 using System;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // 缓动函数工具，提供轨迹/动画计算所需的插值方法。
 public static class EasingUtil

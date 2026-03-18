@@ -1,6 +1,6 @@
-﻿using System.Windows;
+using System.Windows;
 
-namespace AffToSpcConverter.Views;
+namespace InFalsusSongPackStudio.Views;
 
 // 设置窗口，管理预览与编辑相关的用户配置项。
 public partial class SettingsWindow : Window

@@ -1,4 +1,4 @@
-﻿namespace AffToSpcConverter.Models;
+namespace InFalsusSongPackStudio.Models;
 
 // SPC 事件类型枚举。
 public enum SpcEventType

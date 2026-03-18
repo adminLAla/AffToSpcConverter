@@ -1,11 +1,11 @@
-using AffToSpcConverter.Convert;
-using AffToSpcConverter.Convert.Preview;
-using AffToSpcConverter.IO;
-using AffToSpcConverter.Parsing;
-using AffToSpcConverter.Utils;
-using AffToSpcConverter.ViewModels;
-using AffToSpcConverter.Views;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Convert;
+using InFalsusSongPackStudio.Convert.Preview;
+using InFalsusSongPackStudio.IO;
+using InFalsusSongPackStudio.Parsing;
+using InFalsusSongPackStudio.Utils;
+using InFalsusSongPackStudio.ViewModels;
+using InFalsusSongPackStudio.Views;
+using InFalsusSongPackStudio.Models;
 using Microsoft.Win32;
 using NAudio.Wave;
 using NAudio.Vorbis;
@@ -21,7 +21,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-namespace AffToSpcConverter;
+namespace InFalsusSongPackStudio;
 
 // 主窗口，负责转换、预览、文本编辑、打包入口与工具菜单功能。
 public partial class MainWindow : Window
@@ -337,7 +337,7 @@ public partial class MainWindow : Window
                 SortMode = _vm.SortMode
             };
 
-            var result = AffToSpcConverter.Convert.AffToSpcConverter.Convert(aff, opt);
+            var result = InFalsusSongPackStudio.Convert.AffToSpcConverter.Convert(aff, opt);
             _vm.PreviewEvents = result.Events;
             ResetPreviewEditHistory();
 

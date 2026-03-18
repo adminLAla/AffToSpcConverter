@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace AffToSpcConverter.ViewModels;
+namespace InFalsusSongPackStudio.ViewModels;
 
 // 打包加密资源窗口的 ViewModel。
 public class PackageViewModel : INotifyPropertyChanged

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -18,13 +18,13 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Path = System.IO.Path;
 using Microsoft.Win32;
-using AffToSpcConverter.Utils;
+using InFalsusSongPackStudio.Utils;
 using Microsoft.VisualBasic.ApplicationServices;
 using static System.Windows.Forms.AxHost;
 using System.Collections.Specialized;
 using System.Threading;
 
-namespace AffToSpcConverter.Views
+namespace InFalsusSongPackStudio.Views
 {
     /// <summary>
     /// BatchBundleWindow.xaml 的交互逻辑

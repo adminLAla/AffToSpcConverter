@@ -6,13 +6,13 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using AffToSpcConverter.Convert.Preview;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Convert.Preview;
+using InFalsusSongPackStudio.Models;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 
-namespace AffToSpcConverter.Views
+namespace InFalsusSongPackStudio.Views
 {
     // 预览视图模式（分离视图/合并视图）。
     public enum PreviewViewMode { Split, Merged }

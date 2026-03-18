@@ -2,7 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 
-namespace AffToSpcConverter.Views;
+namespace InFalsusSongPackStudio.Views;
 
 // 新增音符对话框，用于录入预览中插入音符的参数。
 public partial class AddNoteDialog : Window
