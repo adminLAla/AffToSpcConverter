@@ -31,6 +31,7 @@ namespace InFalsusSongPackStudio.Views
     /// </summary>
     /// 
 
+    // 批量打包窗口视图模型，维护路径、曲包列表和状态日志。
     public class BatchBundleViewModel : INotifyPropertyChanged
     {
         public ObservableCollection<SongPackInfo> SongPacks { get; } = new();
@@ -72,6 +73,7 @@ namespace InFalsusSongPackStudio.Views
     }
 
 
+    // 单个曲包的解析结果，用于列表展示与导出参数输入。
     public class SongPackInfo
     {
         public string ZipPath { get; set; } = "";
@@ -83,6 +85,7 @@ namespace InFalsusSongPackStudio.Views
         public JsonElement RawJson { get; set; }
     }
 
+    // 批量导入导出曲包窗口。
     public partial class BatchBundleWindow : Window
     {
 
@@ -93,18 +96,21 @@ namespace InFalsusSongPackStudio.Views
         public string BundleDir { get; set; } = "";
         public string BundleFilePath { get; set; } = "";
 
+    // 初始化窗口并绑定视图模型。
     public BatchBundleWindow()
         {
             InitializeComponent();
             DataContext = new BatchBundleViewModel();
         }
+
+        // 扫描目录中的 ZIP，识别可导出曲包并填充列表。
         private void BtnBatchImport_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new System.Windows.Forms.FolderBrowserDialog
+            var dialog = new OpenFolderDialog
             {
-                Description = "选择包含曲包ZIP的文件夹"
+                Title = "选择包含曲包ZIP的文件夹"
             };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            if (dialog.ShowDialog() != true) return;
 
             var vm = DataContext as BatchBundleViewModel;
             if (vm == null)
@@ -117,55 +123,48 @@ namespace InFalsusSongPackStudio.Views
             vm.Status.Clear();
 
             var packList = new List<SongPackInfo>();
+            int skippedNoSongJson = 0;
+            int parseFailed = 0;
 
-            foreach (var zipPath in Directory.EnumerateFiles(dialog.SelectedPath, "*.zip"))
+            foreach (var zipPath in Directory.EnumerateFiles(dialog.FolderName, "*.zip", SearchOption.TopDirectoryOnly))
             {
                 try
                 {
                     using var archive = ZipFile.OpenRead(zipPath);
-                    var entry = archive.GetEntry("song.json");
+                    var entry = FindSongJsonEntry(archive);
                     if (entry == null)
                     {
-                        vm.Status.Add($"{Path.GetFileName(zipPath)}: 未找到 song.json");
+                        skippedNoSongJson++;
+                        vm.Status.Add($"{Path.GetFileName(zipPath)}: 已跳过（非曲包，未找到 song.json）");
                         continue;
                     }
+
                     using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
                     var json = reader.ReadToEnd();
                     var songInfo = JsonSerializer.Deserialize<JsonElement>(json);
 
-                    int slotIndex = 0;
-                    if (songInfo.TryGetProperty("SelectedSlot", out var slotJson) && slotJson.ValueKind == JsonValueKind.Object)
-                    {
-                        slotIndex = slotJson.TryGetProperty("SlotIndex", out var idJson) ? idJson.GetInt32() : 0;
-                    }
-
-                    var info = new SongPackInfo
-                    {
-                        ZipPath = zipPath,
-                        BaseName = songInfo.GetProperty("BaseName").GetString() ?? "",
-                        SlotIndex = slotIndex,
-                        SongTitleEnglish = songInfo.TryGetProperty("SongTitleEnglish", out var ste) ? ste.GetString() ?? "" : "",
-                        SongArtistEnglish = songInfo.TryGetProperty("SongArtistEnglish", out var sae) ? sae.GetString() ?? "" : "",
-                        ChartCount = songInfo.TryGetProperty("Charts", out var charts) && charts.ValueKind == JsonValueKind.Array ? charts.GetArrayLength() : 0,
-                        RawJson = songInfo
-                    };
+                    var info = ParseSongPackInfo(zipPath, songInfo);
                     packList.Add(info);
+                    vm.Status.Add($"{Path.GetFileName(zipPath)}: 已识别曲包（{entry.FullName}）");
                 }
                 catch (Exception ex)
                 {
-                    vm.Status.Add($"{Path.GetFileName(zipPath)}: {ex.Message}");
+                    parseFailed++;
+                    vm.Status.Add($"{Path.GetFileName(zipPath)}: 解析失败 - {BuildErrorMessage(ex)}");
                 }
             }
 
-            // 按 slot_id 排序
             foreach (var info in packList.OrderBy(p => p.SlotIndex))
             {
                 vm.SongPacks.Add(info);
             }
 
-            //StatusTextBox.Text = string.Join(Environment.NewLine, vm.Status);
+            vm.Status.Add($"导入完成：成功 {packList.Count} 个，跳过 {skippedNoSongJson} 个，失败 {parseFailed} 个。");
+            if (packList.Count == 0)
+                vm.Status.Add("提示：当前目录下未识别到可导出的曲包。请确认 ZIP 内含 song.json。");
         }
 
+        // 执行批量导出：扫描空槽、自动分配槽位并输出详细状态。
         private async void BtnBatchExport_Click(object sender, RoutedEventArgs e)
         {
             var vm = (BatchBundleViewModel)DataContext;
@@ -175,150 +174,321 @@ namespace InFalsusSongPackStudio.Views
                 return;
             }
 
+            string gameDirectory = vm.GameDirectory;
+            string sharedAssetsFilePath = vm.SharedAssetsFilePath;
+            string resourcesAssetsFilePath = vm.ResourcesAssetsFilePath;
+            string bundleFilePath = vm.BundleFilePath;
+
+            if (string.IsNullOrWhiteSpace(gameDirectory) ||
+                string.IsNullOrWhiteSpace(sharedAssetsFilePath) ||
+                string.IsNullOrWhiteSpace(resourcesAssetsFilePath) ||
+                string.IsNullOrWhiteSpace(bundleFilePath))
+            {
+                MessageBox.Show("请先选择有效的游戏目录并完成资源路径定位。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!File.Exists(sharedAssetsFilePath) || !File.Exists(resourcesAssetsFilePath) || !File.Exists(bundleFilePath))
+            {
+                MessageBox.Show("资源路径无效：sharedassets0.assets / resources.assets / .bundle 中至少一个不存在，请重新定位。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             vm.Status.Clear();
 
 
             await Task.Run(() =>
             {
+                SongBundleScanResult scan;
+                try
+                {
+                    scan = UnitySongResourcePacker.ScanBundle(bundleFilePath);
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Invoke(() => vm.Status.Add($"导出前扫描失败：{BuildErrorMessage(ex)}"));
+                    return;
+                }
+
+                var slots = scan.Slots.OrderBy(s => s.SlotIndex).ToList();
+                var usedSlots = new HashSet<int>(slots.Where(s => !s.IsEmpty).Select(s => s.SlotIndex));
+                int successCount = 0;
+                int failCount = 0;
+
                 foreach (var pack in vm.SongPacks)
                 {
+                    string extractDir = "";
                     try
                     {
-                        // 1. 解压 zip 到临时目录
-                        string zipDir = Path.GetDirectoryName(pack.ZipPath) ?? "";
-                        string zipNameWithoutExt = Path.GetFileNameWithoutExtension(pack.ZipPath);
-                        string extractDir = Path.Combine(zipDir, zipNameWithoutExt);
-
-                        if (Directory.Exists(extractDir))
-                        {
-                            Directory.Delete(extractDir, true);
-                        }
-                        ZipFile.ExtractToDirectory(pack.ZipPath, extractDir);
+                        extractDir = ExtractZipToTempDirectory(pack.ZipPath);
 
                         var songInfo = pack.RawJson;
+                        int preferredSlot = TryReadPreferredSlotIndex(songInfo);
+                        SongDatabaseSlotInfo targetSlot = ResolveTargetSlot(slots, preferredSlot, usedSlots);
+                        string jacketPath = ResolveRequiredFilePath(songInfo, "JacketImageFileName", extractDir, "曲绘");
+                        string bgmPath = ResolveRequiredFilePath(songInfo, "BgmFileName", extractDir, "BGM");
+                        var jacketTemplate = ParseJacketTemplate(songInfo);
+                        var charts = ParseCharts(songInfo, extractDir);
 
-                        // 2. 构造资源绝对路径
-                        string jacketPath = "";
-                        string bgmPath = "";
-                        if (songInfo.TryGetProperty("JacketImageFileName", out var jacket))
-                            jacketPath = Path.Combine(extractDir, jacket.GetString() ?? "");
-                        if (songInfo.TryGetProperty("BgmFileName", out var bgm))
-                            bgmPath = Path.Combine(extractDir, bgm.GetString() ?? "");
+                        var request = BuildRequest(
+                            songInfo,
+                            bundleFilePath,
+                            sharedAssetsFilePath,
+                            resourcesAssetsFilePath,
+                            gameDirectory,
+                            jacketPath,
+                            bgmPath,
+                            targetSlot,
+                            jacketTemplate,
+                            charts);
 
-                        // 3. 解析 SelectedSlot
-                        SongDatabaseSlotInfo? selectedSlot = null;
-                        if (songInfo.TryGetProperty("SelectedSlot", out var slotJson) && slotJson.ValueKind == JsonValueKind.Object)
-                        {
-                            selectedSlot = new SongDatabaseSlotInfo
-                            {
-                                SlotIndex = slotJson.GetProperty("SlotIndex").GetInt32(),
-                                IsEmpty = slotJson.GetProperty("IsEmpty").GetBoolean(),
-                                SongIdValue = (ushort)slotJson.GetProperty("SongIdValue").GetInt32(),
-                                BaseName = slotJson.GetProperty("BaseName").GetString() ?? "",
-                                ChartCount = slotJson.GetProperty("ChartCount").GetInt32(),
-                                DisplayNameSectionIndicator = slotJson.GetProperty("DisplayNameSectionIndicator").GetString() ?? "",
-                                DisplayArtistSectionIndicator = slotJson.GetProperty("DisplayArtistSectionIndicator").GetString() ?? "",
-                                GameplayBackground = slotJson.GetProperty("GameplayBackground").GetInt32(),
-                                RewardStyle = slotJson.GetProperty("RewardStyle").GetInt32(),
-                            };
-                        }
-
-                        // 4. 解析 JacketTemplate
-                        JacketTemplateCandidate? jacketTemplate = null;
-                        if (songInfo.TryGetProperty("JacketTemplate", out var jacketJson) && jacketJson.ValueKind == JsonValueKind.Object)
-                        {
-                            jacketTemplate = new JacketTemplateCandidate
-                            {
-                                BundleFileIndex = jacketJson.GetProperty("BundleFileIndex").GetInt32(),
-                                AssetsFileName = jacketJson.GetProperty("AssetsFileName").GetString() ?? "",
-                                TexturePathId = jacketJson.GetProperty("TexturePathId").GetInt64(),
-                                MaterialPathId = jacketJson.GetProperty("MaterialPathId").GetInt64(),
-                                BaseName = jacketJson.GetProperty("BaseName").GetString() ?? "",
-                                TextureWidth = jacketJson.GetProperty("TextureWidth").GetInt32(),
-                                TextureHeight = jacketJson.GetProperty("TextureHeight").GetInt32(),
-                            };
-                        }
-
-                        // 5. 解析 Charts，路径为解压目录下的绝对路径
-                        var charts = new List<NewSongChartPackItem>();
-                        if (songInfo.TryGetProperty("Charts", out var chartsJson) && chartsJson.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var chart in chartsJson.EnumerateArray())
-                            {
-                                string chartFileName = chart.TryGetProperty("SourceChartFileName", out var chartFile) ? chartFile.GetString() ?? "" : "";
-                                charts.Add(new NewSongChartPackItem
-                                {
-                                    ChartSlotIndex = chart.GetProperty("ChartSlotIndex").GetInt32(),
-                                    SourceChartFilePath = Path.Combine(extractDir, chartFileName),
-                                    DifficultyFlag = chart.GetProperty("DifficultyFlag").GetByte(),
-                                    Available = chart.GetProperty("Available").GetByte(),
-                                    Rating = chart.GetProperty("Rating").GetInt32(),
-                                    LevelSectionIndicator = chart.GetProperty("LevelSectionIndicator").GetString() ?? "1",
-                                    DisplayChartDesigner = chart.GetProperty("DisplayChartDesigner").GetString() ?? "",
-                                    DisplayJacketDesigner = chart.GetProperty("DisplayJacketDesigner").GetString() ?? ""
-                                });
-                            }
-                        }
-
-                        // 6. 构造导出请求
-                        var request = new NewSongPackRequest
-                        {
-                            BundleFilePath = BundleFilePath,
-                            SharedAssetsFilePath = SharedAssetsFilePath,
-                            ResourcesAssetsFilePath = ResourcesAssetsFilePath,
-                            OutputDirectory = !string.IsNullOrWhiteSpace(GameDirectory)
-                                ? Path.Combine(GameDirectory, "SongData")
-                                : GameDirectory,
-
-                            JacketImageFilePath = jacketPath,
-                            BgmFilePath = bgmPath,
-                            BaseName = songInfo.GetProperty("BaseName").GetString() ?? "",
-                            KeepJacketOriginalSize = songInfo.TryGetProperty("KeepJacketOriginalSize", out var keepJacket) && keepJacket.GetBoolean(),
-
-                            SelectedSlot = selectedSlot ?? throw new Exception("曲包缺少 SelectedSlot 信息"),
-                            JacketTemplate = jacketTemplate ?? throw new Exception("曲包缺少 JacketTemplate 信息"),
-
-                            PreviewStartSeconds = songInfo.TryGetProperty("PreviewStartSeconds", out var previewStart) ? previewStart.GetDouble() : 0,
-                            PreviewEndSeconds = songInfo.TryGetProperty("PreviewEndSeconds", out var previewEnd) ? previewEnd.GetDouble() : 15,
-
-                            DisplayNameSectionIndicator = songInfo.TryGetProperty("DisplayNameSectionIndicator", out var dnsi) ? dnsi.GetString() ?? "" : "",
-                            DisplayArtistSectionIndicator = songInfo.TryGetProperty("DisplayArtistSectionIndicator", out var dasi) ? dasi.GetString() ?? "" : "",
-
-                            SongTitleEnglish = songInfo.TryGetProperty("SongTitleEnglish", out var ste) ? ste.GetString() ?? "" : "",
-                            SongArtistEnglish = songInfo.TryGetProperty("SongArtistEnglish", out var sae) ? sae.GetString() ?? "" : "",
-
-                            GameplayBackground = songInfo.TryGetProperty("GameplayBackground", out var gb) ? gb.GetInt32() : 3,
-                            RewardStyle = songInfo.TryGetProperty("RewardStyle", out var rs) ? rs.GetInt32() : 0,
-                            Charts = charts,
-                            AutoRenameWhenTargetLocked = songInfo.TryGetProperty("AutoRenameWhenTargetLocked", out var autoRename) && autoRename.GetBoolean()
-                        };
-
-                        // 7. 调用导出方法
                         var result = UnitySongResourcePacker.ExportNewSongResources(request);
-                        //vm.Status.Add($"{Path.GetFileName(pack.ZipPath)}: 导出成功");
-                        Dispatcher.Invoke(() => vm.Status.Add($"{Path.GetFileName(pack.ZipPath)}: 导出成功")
-            );
+                        usedSlots.Add(targetSlot.SlotIndex);
+                        successCount++;
+                        Dispatcher.Invoke(() =>
+                        {
+                            string zipName = Path.GetFileName(pack.ZipPath);
+                            if (preferredSlot != targetSlot.SlotIndex)
+                            {
+                                vm.Status.Add($"{zipName}: 请求槽位 {preferredSlot} 不可用，已自动写入空槽 {targetSlot.SlotIndex}。");
+                            }
+
+                            vm.Status.Add($"{zipName}: 导出成功 -> 槽位 {targetSlot.SlotIndex}，SongId={result.SongDatabaseReadback.SongId}，BaseName={result.SongDatabaseReadback.BaseName}");
+                            vm.Status.Add($"  输出目录: {request.OutputDirectory}");
+                            vm.Status.Add($"  输出文件: {result.OutputBundlePath}");
+                            vm.Status.Add($"            {result.OutputSharedAssetsPath}");
+                            vm.Status.Add($"            {result.OutputResourcesAssetsPath}");
+                        });
 
                     }
                     catch (Exception ex)
                     {
-                        //vm.Status.Add($"{Path.GetFileName(pack.ZipPath)}: 导出失败 - {ex.Message}");\
+                        failCount++;
                         Dispatcher.Invoke(() =>
-                            vm.Status.Add($"{Path.GetFileName(pack.ZipPath)}: 导出失败 - {ex.Message}")
-            );
+                            vm.Status.Add($"{Path.GetFileName(pack.ZipPath)}: 导出失败 - {BuildErrorMessage(ex)}"));
+                    }
+                    finally
+                    {
+                        DeleteDirectorySafe(extractDir);
                     }
                 }
+
+                Dispatcher.Invoke(() => vm.Status.Add($"批量导出完成：成功 {successCount} 首，失败 {failCount} 首。"));
             });
 
-            //StatusTextBox.Text = string.Join(Environment.NewLine, vm.Status);
             MessageBox.Show("批量导出完成。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+
+        // 在 ZIP 中查找 song.json（支持大小写和子目录）。
+        private static ZipArchiveEntry? FindSongJsonEntry(ZipArchive archive)
+            => archive.Entries
+                .Where(e => !string.IsNullOrWhiteSpace(e.Name))
+                .Where(e => string.Equals(e.Name, "song.json", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(e => CountZipEntryDepth(e.FullName))
+                .ThenBy(e => e.FullName.Length)
+                .FirstOrDefault();
+
+        // 统计条目路径深度，用于优先选择浅层 song.json。
+        private static int CountZipEntryDepth(string fullName)
+            => fullName.Count(ch => ch == '/' || ch == '\\');
+
+        // 将 song.json 解析为列表展示模型。
+        private static SongPackInfo ParseSongPackInfo(string zipPath, JsonElement songInfo)
+        {
+            int slotIndex = TryReadPreferredSlotIndex(songInfo);
+            return new SongPackInfo
+            {
+                ZipPath = zipPath,
+                BaseName = songInfo.GetProperty("BaseName").GetString() ?? "",
+                SlotIndex = slotIndex,
+                SongTitleEnglish = songInfo.TryGetProperty("SongTitleEnglish", out var ste) ? ste.GetString() ?? "" : "",
+                SongArtistEnglish = songInfo.TryGetProperty("SongArtistEnglish", out var sae) ? sae.GetString() ?? "" : "",
+                ChartCount = songInfo.TryGetProperty("Charts", out var charts) && charts.ValueKind == JsonValueKind.Array ? charts.GetArrayLength() : 0,
+                RawJson = songInfo
+            };
+        }
+
+        // 读取曲包请求槽位；无请求时返回 -1。
+        private static int TryReadPreferredSlotIndex(JsonElement songInfo)
+        {
+            if (songInfo.TryGetProperty("SelectedSlot", out var slotJson) && slotJson.ValueKind == JsonValueKind.Object)
+            {
+                if (slotJson.TryGetProperty("SlotIndex", out var slotIndexJson))
+                    return slotIndexJson.GetInt32();
+            }
+            return -1;
+        }
+
+        // 解析最终写入槽位：优先请求槽位，不可用则自动选空槽。
+        private static SongDatabaseSlotInfo ResolveTargetSlot(
+            IReadOnlyList<SongDatabaseSlotInfo> slots,
+            int preferredSlot,
+            HashSet<int> usedSlots)
+        {
+            bool PreferredUsable(SongDatabaseSlotInfo s)
+                => s.SlotIndex == preferredSlot && s.SlotIndex >= 2 && s.IsEmpty && !usedSlots.Contains(s.SlotIndex);
+
+            var preferred = slots.FirstOrDefault(PreferredUsable);
+            if (preferred != null)
+                return preferred;
+
+            var fallback = slots
+                .Where(s => s.SlotIndex >= 2 && s.IsEmpty && !usedSlots.Contains(s.SlotIndex))
+                .OrderBy(s => s.SlotIndex)
+                .FirstOrDefault();
+
+            if (fallback == null)
+                throw new Exception("没有可用空槽可写入。请先在游戏中清理空槽或减少批量导出数量。");
+
+            return fallback;
+        }
+
+        // 解压 ZIP 到系统临时目录，避免覆盖原目录同名文件夹。
+        private static string ExtractZipToTempDirectory(string zipPath)
+        {
+            string zipNameWithoutExt = Path.GetFileNameWithoutExtension(zipPath);
+            string rootTempDir = Path.Combine(Path.GetTempPath(), "InFalsusSongPackStudio", "BatchExport");
+            Directory.CreateDirectory(rootTempDir);
+
+            string safeBaseName = string.Concat(zipNameWithoutExt.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+            string extractDir = Path.Combine(rootTempDir, $"{safeBaseName}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(extractDir);
+
+            ZipFile.ExtractToDirectory(zipPath, extractDir);
+            return extractDir;
+        }
+
+        // 解析并校验曲绘/BGM等必需资源路径。
+        private static string ResolveRequiredFilePath(JsonElement songInfo, string propertyName, string extractDir, string displayName)
+        {
+            string relative = songInfo.TryGetProperty(propertyName, out var p) ? p.GetString() ?? "" : "";
+            string fullPath = Path.Combine(extractDir, relative);
+            if (string.IsNullOrWhiteSpace(relative) || !File.Exists(fullPath))
+                throw new FileNotFoundException($"未找到{displayName}文件：{fullPath}");
+            return fullPath;
+        }
+
+        // 解析曲绘模板信息。
+        private static JacketTemplateCandidate ParseJacketTemplate(JsonElement songInfo)
+        {
+            if (!songInfo.TryGetProperty("JacketTemplate", out var jacketJson) || jacketJson.ValueKind != JsonValueKind.Object)
+                throw new Exception("曲包缺少 JacketTemplate 信息");
+
+            return new JacketTemplateCandidate
+            {
+                BundleFileIndex = jacketJson.GetProperty("BundleFileIndex").GetInt32(),
+                AssetsFileName = jacketJson.GetProperty("AssetsFileName").GetString() ?? "",
+                TexturePathId = jacketJson.GetProperty("TexturePathId").GetInt64(),
+                MaterialPathId = jacketJson.GetProperty("MaterialPathId").GetInt64(),
+                BaseName = jacketJson.GetProperty("BaseName").GetString() ?? "",
+                TextureWidth = jacketJson.GetProperty("TextureWidth").GetInt32(),
+                TextureHeight = jacketJson.GetProperty("TextureHeight").GetInt32(),
+            };
+        }
+
+        // 解析谱面列表并校验谱面文件存在性。
+        private static List<NewSongChartPackItem> ParseCharts(JsonElement songInfo, string extractDir)
+        {
+            var charts = new List<NewSongChartPackItem>();
+            if (songInfo.TryGetProperty("Charts", out var chartsJson) && chartsJson.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var chart in chartsJson.EnumerateArray())
+                {
+                    string chartFileName = chart.TryGetProperty("SourceChartFileName", out var chartFile) ? chartFile.GetString() ?? "" : "";
+                    charts.Add(new NewSongChartPackItem
+                    {
+                        ChartSlotIndex = chart.GetProperty("ChartSlotIndex").GetInt32(),
+                        SourceChartFilePath = Path.Combine(extractDir, chartFileName),
+                        DifficultyFlag = chart.GetProperty("DifficultyFlag").GetByte(),
+                        Available = chart.GetProperty("Available").GetByte(),
+                        Rating = chart.GetProperty("Rating").GetInt32(),
+                        LevelSectionIndicator = chart.GetProperty("LevelSectionIndicator").GetString() ?? "1",
+                        DisplayChartDesigner = chart.GetProperty("DisplayChartDesigner").GetString() ?? "",
+                        DisplayJacketDesigner = chart.GetProperty("DisplayJacketDesigner").GetString() ?? ""
+                    });
+                }
+            }
+
+            if (charts.Count == 0)
+                throw new Exception("曲包中没有可导出的谱面（Charts 为空）。");
+
+            var missingChart = charts
+                .Select(c => c.SourceChartFilePath)
+                .FirstOrDefault(p => string.IsNullOrWhiteSpace(p) || !File.Exists(p));
+            if (!string.IsNullOrWhiteSpace(missingChart))
+                throw new FileNotFoundException($"未找到谱面文件：{missingChart}");
+
+            return charts;
+        }
+
+        // 组装导出请求参数。
+        private static NewSongPackRequest BuildRequest(
+            JsonElement songInfo,
+            string bundleFilePath,
+            string sharedAssetsFilePath,
+            string resourcesAssetsFilePath,
+            string gameDirectory,
+            string jacketPath,
+            string bgmPath,
+            SongDatabaseSlotInfo targetSlot,
+            JacketTemplateCandidate jacketTemplate,
+            IReadOnlyList<NewSongChartPackItem> charts)
+        {
+            return new NewSongPackRequest
+            {
+                BundleFilePath = bundleFilePath,
+                SharedAssetsFilePath = sharedAssetsFilePath,
+                ResourcesAssetsFilePath = resourcesAssetsFilePath,
+                OutputDirectory = Path.Combine(gameDirectory, "SongData"),
+                JacketImageFilePath = jacketPath,
+                BgmFilePath = bgmPath,
+                BaseName = songInfo.GetProperty("BaseName").GetString() ?? "",
+                KeepJacketOriginalSize = songInfo.TryGetProperty("KeepJacketOriginalSize", out var keepJacket) && keepJacket.GetBoolean(),
+                SelectedSlot = targetSlot,
+                JacketTemplate = jacketTemplate,
+                PreviewStartSeconds = songInfo.TryGetProperty("PreviewStartSeconds", out var previewStart) ? previewStart.GetDouble() : 0,
+                PreviewEndSeconds = songInfo.TryGetProperty("PreviewEndSeconds", out var previewEnd) ? previewEnd.GetDouble() : 15,
+                DisplayNameSectionIndicator = songInfo.TryGetProperty("DisplayNameSectionIndicator", out var dnsi) ? dnsi.GetString() ?? "" : "",
+                DisplayArtistSectionIndicator = songInfo.TryGetProperty("DisplayArtistSectionIndicator", out var dasi) ? dasi.GetString() ?? "" : "",
+                SongTitleEnglish = songInfo.TryGetProperty("SongTitleEnglish", out var ste) ? ste.GetString() ?? "" : "",
+                SongArtistEnglish = songInfo.TryGetProperty("SongArtistEnglish", out var sae) ? sae.GetString() ?? "" : "",
+                GameplayBackground = songInfo.TryGetProperty("GameplayBackground", out var gb) ? gb.GetInt32() : 3,
+                RewardStyle = songInfo.TryGetProperty("RewardStyle", out var rs) ? rs.GetInt32() : 0,
+                Charts = charts,
+                AutoRenameWhenTargetLocked = songInfo.TryGetProperty("AutoRenameWhenTargetLocked", out var autoRename) && autoRename.GetBoolean()
+            };
+        }
+
+        // 安全删除目录（清理失败时忽略，避免阻断主流程）。
+        private static void DeleteDirectorySafe(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch
+            {
+            }
+        }
+
+        // 统一格式化错误信息（包含内层异常摘要）。
+        private static string BuildErrorMessage(Exception ex)
+        {
+            if (ex.InnerException == null)
+                return $"{ex.GetType().Name}: {ex.Message}";
+            return $"{ex.GetType().Name}: {ex.Message} | Inner={ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
+        }
+
+        // 选择游戏目录并刷新关键资源路径。
         private void BtnBrowseGameDirectory_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new OpenFolderDialog();
             if (dialog.ShowDialog() != true) return;
             ApplyGameDirectory(dialog.FolderName);
         }
+        // 根据游戏根目录推导 bundle/assets 路径。
         private void ApplyGameDirectory(string gameDirectory)
         {
             if (string.IsNullOrWhiteSpace(gameDirectory))
@@ -347,8 +517,9 @@ namespace InFalsusSongPackStudio.Views
             vm.GameDirectory = GameDirectory;
             vm.SharedAssetsFilePath = SharedAssetsFilePath;
             vm.ResourcesAssetsFilePath = ResourcesAssetsFilePath;
-            vm.BundleFilePath = BundleDir;
+            vm.BundleFilePath = BundleFilePath;
         }
+        // 解析目标歌曲数据库 bundle：优先默认文件名，失败时回退到目录扫描。
         private static string? ResolveTargetSongBundlePath(string bundleDir, string defaultBundlePath)
         {
             if (File.Exists(defaultBundlePath))
