@@ -117,7 +117,6 @@
                                   IsChecked="{Binding KeepJacketOriginalSize}"
                                   Content="保留曲绘原图尺寸（不强制缩放到模板尺寸）"
                                   ToolTip="开启后按导入曲绘原始宽高写入 Texture2D，并优先尝试原格式/BC7 编码；若都失败才回退 RGBA32。"/>
-
                         <Button Grid.Row="5" Grid.Column="2" Content="扫描.bundle" Click="BtnRescanBundle_Click"/>
                     </Grid>
                 </GroupBox>
@@ -235,6 +234,8 @@
                       IsChecked="{Binding AutoRenameWhenTargetLocked}"/>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Width="110" Margin="0,0,8,0" Click="BtnImportPackage_Click">导入曲包</Button>
+                <Button Width="110" Margin="0,0,8,0" Click="BtnExportPackage_Click">导出曲包</Button>
                 <Button Width="110" Margin="0,0,8,0" Click="BtnExport_Click">导出</Button>
                 <Button Width="110" IsCancel="True">关闭</Button>
             </StackPanel>

@@ -466,8 +466,8 @@ public static class UnitySongResourcePacker
         ValidateImagePath(request.JacketImageFilePath);
         if (string.IsNullOrWhiteSpace(request.BgmFilePath) || !File.Exists(request.BgmFilePath))
             throw new FileNotFoundException($"BGM 文件不存在：{request.BgmFilePath}");
-        if (request.SelectedSlot == null || !request.SelectedSlot.IsEmpty)
-            throw new Exception("请选择空槽。");
+        //if (request.SelectedSlot == null || !request.SelectedSlot.IsEmpty)
+        //    throw new Exception("请选择空槽。");
         if (request.SelectedSlot.SlotIndex < 2)
             throw new Exception("槽位 00/01 为保留槽位，请选择 02-76 的空槽。");
         if (request.JacketTemplate == null)
@@ -484,8 +484,8 @@ public static class UnitySongResourcePacker
             throw new Exception("BaseName 仅允许英文大小写字母、数字、下划线、连字符，且不能包含空格或中文字符。");
 
         string bgmExt = Path.GetExtension(request.BgmFilePath).ToLowerInvariant();
-        if (bgmExt is not ".ogg" and not ".wav")
-            throw new Exception($"BGM 仅支持 .ogg/.wav：{request.BgmFilePath}");
+        if (bgmExt is not ".ogg" and not ".wav" and not ".mp3")
+            throw new Exception($"BGM 仅支持 .ogg/.wav/.mp3：{request.BgmFilePath}");
 
         if (double.IsNaN(request.PreviewStartSeconds) || double.IsInfinity(request.PreviewStartSeconds))
             throw new Exception("试听区间起始值无效。请输入合法数字。");
@@ -542,6 +542,7 @@ public static class UnitySongResourcePacker
         {
             ".ogg" => new VorbisWaveReader(audioFilePath),
             ".wav" => new WaveFileReader(audioFilePath),
+            ".mp3" => new Mp3FileReader(audioFilePath),
             _ => new AudioFileReader(audioFilePath)
         };
 
@@ -1915,25 +1916,46 @@ public static class UnitySongResourcePacker
         RawStreamingAssetsMappingMonoBehaviourData raw,
         IReadOnlyList<NewSongMappingEntryResult> newEntries)
     {
+        // 先复制原有条目
         var merged = new List<RawStreamingAssetsMappingMonoBehaviourData.Entry>(raw.Entries.Count + newEntries.Count);
         merged.AddRange(raw.Entries);
 
-        var existing = new HashSet<string>(
-            raw.Entries.Select(x => (x.FullLookupPath ?? "").Replace('\\', '/')),
-            StringComparer.OrdinalIgnoreCase);
+        // 用字典方便查找和更新
+        var entryDict = new Dictionary<string, RawStreamingAssetsMappingMonoBehaviourData.Entry>(
+            raw.Entries.Select(x => new KeyValuePair<string, RawStreamingAssetsMappingMonoBehaviourData.Entry>(
+            (x.FullLookupPath ?? "").Replace('\\', '/'), x)), StringComparer.OrdinalIgnoreCase);
 
         foreach (var e in newEntries)
         {
             string path = (e.FullLookupPath ?? "").Replace('\\', '/');
-            if (!existing.Add(path))
-                throw new Exception($"StreamingAssetsMapping 中已存在 FullLookupPath：{path}");
-
-            merged.Add(new RawStreamingAssetsMappingMonoBehaviourData.Entry
+            if (entryDict.TryGetValue(path, out var existing))
             {
-                FullLookupPath = path,
-                Guid = e.Guid ?? "",
-                FileLength = e.FileLength
-            });
+                // 修改已存在条目的内容
+                var updatedEntry = new RawStreamingAssetsMappingMonoBehaviourData.Entry
+                {
+                    FullLookupPath = existing.FullLookupPath,
+                    Guid = e.Guid ?? "",
+                    FileLength = e.FileLength
+                };
+                entryDict[path] = updatedEntry;
+                int index = merged.FindIndex(x => x.FullLookupPath == existing.FullLookupPath);
+                if (index >= 0)
+                {
+                    merged[index] = updatedEntry;
+                }
+            }
+            else
+            {
+                // 新增条目
+                var newEntry = new RawStreamingAssetsMappingMonoBehaviourData.Entry
+                {
+                    FullLookupPath = path,
+                    Guid = e.Guid ?? "",
+                    FileLength = e.FileLength
+                };
+                merged.Add(newEntry);
+                entryDict[path] = newEntry;
+            }
         }
 
         using var ms = new MemoryStream(raw.OriginalBytes.Length + Math.Max(1024, newEntries.Count * 96));
