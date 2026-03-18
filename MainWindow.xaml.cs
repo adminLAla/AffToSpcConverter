@@ -497,7 +497,7 @@ public partial class MainWindow : Window
     // 显示关于对话框。
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("Arcaea → In Falsus 转换器\nv0.9.0\nWPF/.NET", "关于");
+        MessageBox.Show("InFalsus SongPack Studio\nv0.9.0\nWPF/.NET", "关于");
     }
 
     // 关闭主窗口。
