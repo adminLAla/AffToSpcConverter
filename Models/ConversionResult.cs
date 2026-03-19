@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace AffToSpcConverter.Models;
+namespace InFalsusSongPackStudio.Models;
 
 // 转换结果模型，包含导出事件与警告信息。
 public record ConversionResult(

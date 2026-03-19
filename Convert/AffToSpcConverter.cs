@@ -1,11 +1,11 @@
-﻿using AffToSpcConverter.Models;
-using AffToSpcConverter.Parsing;
-using AffToSpcConverter.Utils;
+using InFalsusSongPackStudio.Models;
+using InFalsusSongPackStudio.Parsing;
+using InFalsusSongPackStudio.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AffToSpcConverter.Convert;
+namespace InFalsusSongPackStudio.Convert;
 
 // AFF -> SPC 转换入口，组织解析、转换与输出事件生成流程。
 public static class AffToSpcConverter

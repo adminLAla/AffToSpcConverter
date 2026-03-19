@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
-using AffToSpcConverter.Convert.Preview;
+using InFalsusSongPackStudio.Convert.Preview;
 
-namespace AffToSpcConverter.Views
+namespace InFalsusSongPackStudio.Views
 {
     // 预览几何构建器（基础版），生成预览绘制所需的几何信息。
     public static class SpcGeometryBuilder

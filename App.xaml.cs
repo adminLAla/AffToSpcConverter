@@ -4,8 +4,9 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using InFalsusSongPackStudio.Utils;
 
-namespace AffToSpcConverter
+namespace InFalsusSongPackStudio
 {
     // WPF 应用入口，负责初始化全局异常日志与应用级事件。
     public partial class App : Application
@@ -18,6 +19,8 @@ namespace AffToSpcConverter
         {
             // 统一记录软件运行期间的异常信息到 exe 同目录。
             HookGlobalExceptionLogging();
+            var settings = AppGlobalSettingsStore.Load();
+            AppThemeManager.ApplyTheme(settings.ThemeMode);
             base.OnStartup(e);
         }
 

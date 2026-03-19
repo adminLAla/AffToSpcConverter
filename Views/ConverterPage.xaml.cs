@@ -1,11 +1,10 @@
-using AffToSpcConverter.Convert;
-using AffToSpcConverter.Convert.Preview;
-using AffToSpcConverter.IO;
-using AffToSpcConverter.Parsing;
-using AffToSpcConverter.Utils;
-using AffToSpcConverter.ViewModels;
-using AffToSpcConverter.Views;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Convert;
+using InFalsusSongPackStudio.Convert.Preview;
+using InFalsusSongPackStudio.IO;
+using InFalsusSongPackStudio.Parsing;
+using InFalsusSongPackStudio.Utils;
+using InFalsusSongPackStudio.ViewModels;
+using InFalsusSongPackStudio.Models;
 using Microsoft.Win32;
 using NAudio.Wave;
 using NAudio.Vorbis;
@@ -21,10 +20,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-namespace AffToSpcConverter;
+namespace InFalsusSongPackStudio.Views;
 
-// 主窗口，负责转换、预览、文本编辑、打包入口与工具菜单功能。
-public partial class MainWindow : Window
+// 转换与预览页面：负责 AFF/SPC 转换、文本编辑与可视化预览。
+public partial class ConverterPage : UserControl
 {
     private readonly MainViewModel _vm = new();
 
@@ -40,7 +39,7 @@ public partial class MainWindow : Window
     // ===== 属性面板状态 =====
     private RenderItem? _selectedRenderItem;
 
-    private Views.AddNoteRequest? _pendingAddRequest;
+    private AddNoteRequest? _pendingAddRequest;
 
     // 通用数字字段：(字段名, TextBox)
     private readonly List<(string fieldName, TextBox textBox)> _propFields = new();
@@ -67,8 +66,8 @@ public partial class MainWindow : Window
         public override string ToString() => Text;
     }
 
-    // 初始化主窗口并绑定预览事件。
-    public MainWindow()
+    // 初始化转换页面并绑定预览事件。
+    public ConverterPage()
     {
         InitializeComponent();
         DataContext = _vm;
@@ -82,6 +81,8 @@ public partial class MainWindow : Window
         UpdateTextBoxLineNumbers(AffInputTextBox, AffInputLineNumbersTextBox, ref _affLineNumberRenderedCount);
         UpdateTextBoxLineNumbers(SpcOutputTextBox, SpcOutputLineNumbersTextBox, ref _spcLineNumberRenderedCount);
         RefreshPreviewEditButtonStates();
+        _vm.Status = "请打开 .aff 或 .spc 开始。";
+        Unloaded += ConverterPage_Unloaded;
     }
 
     // 根据当前选中状态与撤回/恢复历史更新顶部编辑按钮可用性。
@@ -100,8 +101,10 @@ public partial class MainWindow : Window
         BtnRedoText.IsEnabled = textEditable && (spcTextBox?.CanRedo == true);
         BtnSaveSpcText.IsEnabled = HasWorkingSpcText();
 
-        bool isTextEditing = textEditable && MenuVisualPreview.IsChecked != true;
-        BtnEditNoteText.Content = isTextEditing ? "结束编辑" : "编辑";
+        bool isTextEditing = textEditable && PreviewModeToggle.IsChecked != true;
+        BtnEditNoteText.Content = isTextEditing ? "完成" : "编辑";
+        BtnEditNoteText.ClearValue(Button.FontFamilyProperty);
+        BtnEditNoteText.ToolTip = isTextEditing ? "结束编辑" : "编辑输出文本";
         if (isTextEditing)
         {
             BtnEditNoteText.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0x7D, 0x32));
@@ -123,6 +126,8 @@ public partial class MainWindow : Window
     // 当前是否存在可供编辑/校验/导出的 SPC 工作副本。
     private bool HasWorkingSpcText()
         => !string.IsNullOrWhiteSpace(GetWorkingSpcText());
+
+    public bool HasLoadedSpcForPreview => _vm.PreviewEvents != null && HasWorkingSpcText();
 
     // 文本变化时按当前行数生成左侧行号文本。
     private static void UpdateTextBoxLineNumbers(TextBox sourceTextBox, TextBox lineNumberTextBox, ref int cacheLineCount)
@@ -175,6 +180,8 @@ public partial class MainWindow : Window
         sv?.ScrollToVerticalOffset(verticalOffset);
     }
 
+    private Window? GetHostWindow() => Window.GetWindow(this);
+
     // 当前编辑撤销历史上限（同时用于文本撤销栈与预览撤销栈）。
     private int EditHistoryLimit => Math.Clamp(_vm.TextEditUndoLimit, 1, 5000);
 
@@ -208,9 +215,9 @@ public partial class MainWindow : Window
         // 预览数据被清空时自动退出可视化预览，避免界面停留在空白预览层。
         if (e.PropertyName == nameof(MainViewModel.PreviewEvents) &&
             !_vm.CanVisualPreview &&
-            MenuVisualPreview.IsChecked == true)
+            PreviewModeToggle.IsChecked == true)
         {
-            MenuVisualPreview.IsChecked = false;
+            PreviewModeToggle.IsChecked = false;
         }
 
         if (e.PropertyName == nameof(MainViewModel.PreviewEvents) && !_vm.CanVisualPreview)
@@ -247,9 +254,16 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() != true) return;
 
+        if (!TryLoadSpcFile(dlg.FileName, out var errorMessage))
+            MessageBox.Show(errorMessage, "加载 SPC 失败");
+    }
+
+    public bool TryLoadSpcFile(string filePath, out string? errorMessage)
+    {
+        errorMessage = null;
         try
         {
-            var spcText = File.ReadAllText(dlg.FileName, Encoding.UTF8);
+            var spcText = File.ReadAllText(filePath, Encoding.UTF8);
             var events = SpcParser.Parse(spcText);
 
             _vm.GeneratedSpcText = spcText;
@@ -259,7 +273,6 @@ public partial class MainWindow : Window
             _spcTextNeedsPreviewSync = false;
             ResetPreviewEditHistory();
 
-            // 计算事件的结束时间（用于预览时间范围）。
             static int EndTime(ISpcEvent ev) => ev switch
             {
                 SpcHold h => h.TimeMs + h.DurationMs,
@@ -277,12 +290,14 @@ public partial class MainWindow : Window
             PreviewControl.JudgeTimeMsPrecise = _vm.PreviewTimeMs;
             RefreshPreviewEditButtonStates();
 
-            _vm.Status = $"已加载 SPC：{Path.GetFileName(dlg.FileName)}（共 {events.Count} 个事件）";
+            _vm.Status = $"已加载 SPC：{Path.GetFileName(filePath)}（共 {events.Count} 个事件）";
+            return true;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.ToString(), "加载 SPC 失败");
             _vm.Status = "加载 SPC 失败。";
+            errorMessage = ex.ToString();
+            return false;
         }
     }
 
@@ -337,7 +352,7 @@ public partial class MainWindow : Window
                 SortMode = _vm.SortMode
             };
 
-            var result = AffToSpcConverter.Convert.AffToSpcConverter.Convert(aff, opt);
+            var result = InFalsusSongPackStudio.Convert.AffToSpcConverter.Convert(aff, opt);
             _vm.PreviewEvents = result.Events;
             ResetPreviewEditHistory();
 
@@ -427,81 +442,6 @@ public partial class MainWindow : Window
         _vm.Status = "SPC 合法性检验通过（0 错误，0 警告）。";
         MessageBox.Show("SPC 合法性检验通过。", "合法性检验");
     }
-
-    // 打开设置窗口。
-    private void MenuSettings_Click(object sender, RoutedEventArgs e)
-    {
-        var win = new SettingsWindow { Owner = this, DataContext = _vm };
-        win.ShowDialog();
-    }
-
-    // 生成并显示当前 SPC 的统计信息。
-    private void MenuReport_Click(object sender, RoutedEventArgs e)
-    {
-        var spcText = GetWorkingSpcText();
-        if (string.IsNullOrWhiteSpace(spcText))
-        {
-            MessageBox.Show("请先完成转换，再查看统计信息。");
-            return;
-        }
-        MessageBox.Show(ReportUtil.BuildSimpleReport(spcText, _vm), "统计信息");
-    }
-
-    // 打开资源打包窗口。
-    private void MenuPackage_Click(object sender, RoutedEventArgs e)
-    {
-        new PackageWindow { Owner = this }.ShowDialog();
-    }
-
-    // 打开未加密 Unity bundle 的纹理替换打包窗口。
-    private void MenuPackageBundleTexture_Click(object sender, RoutedEventArgs e)
-    {
-        new BundleTexturePackageWindow { Owner = this }.ShowDialog();
-    }
-
-    // 恢复“打包谱面”写入到游戏目录的文件（回滚 *_original，并清理 sam 中新增哈希资源）。
-    private void MenuRestoreSongPackedFiles_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog
-        {
-            Title = "请选择游戏根目录（例如 In Falsus Demo）"
-        };
-        if (dialog.ShowDialog() != true) return;
-
-        if (MessageBox.Show(
-                "你选择的是游戏根目录（例如 In Falsus Demo）。\n\n" +
-                "将恢复该目录下由“打包谱面”写入的文件：\n" +
-                "- 回滚 *_original 备份（sharedassets0.assets/resources.assets/bundle）\n" +
-                "- 清理 sam 文件夹中新增加密资源（依据 SongData 备份目录推断）\n\n" +
-                "是否继续？",
-                "恢复文件",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning) != MessageBoxResult.Yes)
-        {
-            return;
-        }
-
-        try
-        {
-            string summary = UnitySongResourcePacker.RestoreDeployedSongFiles(dialog.FolderName);
-            _vm.Status = "恢复文件完成。";
-            MessageBox.Show(summary, "恢复文件", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            _vm.Status = "恢复文件失败。";
-            MessageBox.Show($"恢复失败：{ex.Message}", "恢复文件", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    // 显示关于对话框。
-    private void MenuAbout_Click(object sender, RoutedEventArgs e)
-    {
-        MessageBox.Show("InFalsus SongPack Studio\nv0.9.0\nWPF/.NET", "关于");
-    }
-
-    // 关闭主窗口。
-    private void MenuExit_Click(object sender, RoutedEventArgs e) => Close();
 
     // 导出前执行非法校验；若存在 Error，则弹出可定位列表并阻止导出。
     private bool TryValidateCurrentSpcBeforeSave(out SpcValidationReport validation)
@@ -610,11 +550,11 @@ public partial class MainWindow : Window
 
         var win = new Window
         {
-            Owner = this,
+            Owner = GetHostWindow(),
             Title = title,
             Width = 660,
             Height = 400,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            WindowStartupLocation = GetHostWindow() != null ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
             Content = root
         };
 
@@ -635,9 +575,9 @@ public partial class MainWindow : Window
     private void NavigateToSpcOutputLine(int lineNo)
     {
         if (lineNo <= 0) return;
-        if (MenuVisualPreview.IsChecked == true)
+        if (PreviewModeToggle.IsChecked == true)
         {
-            MenuVisualPreview.IsChecked = false;
+            PreviewModeToggle.IsChecked = false;
             OnPreviewToggled(this, new RoutedEventArgs());
         }
 
@@ -747,13 +687,13 @@ public partial class MainWindow : Window
     // 切换文本视图与可视化预览模式，并同步工具栏显示。
     private void OnPreviewToggled(object sender, RoutedEventArgs e)
     {
-        bool show = MenuVisualPreview.IsChecked == true;
+        bool show = PreviewModeToggle.IsChecked == true;
 
         if (show && (_spcTextNeedsPreviewSync || !SpcOutputTextBox.IsReadOnly))
         {
             if (!TrySyncPreviewEventsFromWorkingText())
             {
-                MenuVisualPreview.IsChecked = false;
+                PreviewModeToggle.IsChecked = false;
                 return;
             }
         }
@@ -782,26 +722,55 @@ public partial class MainWindow : Window
                 SpcOutputTextBox.IsReadOnly = true;
         }
 
-        // 切换内容层
         PreviewOverlay.Visibility  = show ? Visibility.Visible   : Visibility.Collapsed;
         TextPanelsGrid.Visibility  = show ? Visibility.Collapsed : Visibility.Visible;
 
-        // 切换工具栏：预览模式用背景音乐工具栏，普通模式用文件工具栏
         ToolbarText.Visibility    = show ? Visibility.Collapsed : Visibility.Visible;
         ToolbarPreview.Visibility = show ? Visibility.Visible   : Visibility.Collapsed;
         RefreshPreviewEditButtonStates();
     }
 
-    // 从主界面输出区快速进入可视化预览。
     private void BtnOpenVisualPreview_Click(object sender, RoutedEventArgs e)
     {
         if (!HasWorkingSpcText()) return;
-        if (MenuVisualPreview.IsChecked == true) return;
-        MenuVisualPreview.IsChecked = true;
+
+        if (PreviewModeToggle.IsChecked != true)
+        {
+            PreviewModeToggle.IsChecked = true;
+            OnPreviewToggled(sender, e);
+        }
+
+        if (GetHostWindow() is ShellWindow shell)
+        {
+            shell.NavigateToPreviewSection();
+            return;
+        }
+
+        if (PreviewModeToggle.IsChecked == true) return;
+        PreviewModeToggle.IsChecked = true;
         OnPreviewToggled(sender, e);
     }
 
-    // 输出区“编辑/结束编辑”按钮：切换文本区编辑模式，对 SPC 工作副本进行文本增改。
+    public void EnterConversionNavigationMode()
+    {
+        if (PreviewModeToggle.IsChecked != true) return;
+        PreviewModeToggle.IsChecked = false;
+        OnPreviewToggled(this, new RoutedEventArgs());
+    }
+
+    public void EnterPreviewNavigationMode()
+    {
+        if (!HasWorkingSpcText())
+        {
+            _vm.Status = "请先打开或生成 SPC。";
+            return;
+        }
+
+        if (PreviewModeToggle.IsChecked == true) return;
+        PreviewModeToggle.IsChecked = true;
+        OnPreviewToggled(this, new RoutedEventArgs());
+    }
+
     private void BtnEditFromTextPanel_Click(object sender, RoutedEventArgs e)
     {
         if (!HasWorkingSpcText())
@@ -810,9 +779,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (MenuVisualPreview.IsChecked == true)
+        if (PreviewModeToggle.IsChecked == true)
         {
-            MenuVisualPreview.IsChecked = false;
+            PreviewModeToggle.IsChecked = false;
             OnPreviewToggled(sender, e);
         }
 
@@ -833,7 +802,6 @@ public partial class MainWindow : Window
         RefreshPreviewEditButtonStates();
     }
 
-    // 首页文本区撤销：使用 TextBox 内建撤销栈（与可视化预览撤销栈独立）。
     private void BtnUndoTextEdit_Click(object sender, RoutedEventArgs e)
     {
         if (SpcOutputTextBox.IsReadOnly)
@@ -855,7 +823,6 @@ public partial class MainWindow : Window
         RefreshPreviewEditButtonStates();
     }
 
-    // 首页文本区恢复：使用 TextBox 内建恢复栈（与可视化预览恢复栈独立）。
     private void BtnRedoTextEdit_Click(object sender, RoutedEventArgs e)
     {
         if (SpcOutputTextBox.IsReadOnly)
@@ -877,9 +844,6 @@ public partial class MainWindow : Window
         RefreshPreviewEditButtonStates();
     }
 
-    // ===== 音符增删 =====
-
-    // 打开新增音符对话框，并进入预览放置模式。
     private void BtnAddNote_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.PreviewEvents == null)
@@ -890,31 +854,31 @@ public partial class MainWindow : Window
 
         int defaultDen = Math.Max(1, _vm.Denominator);
         var typeNames = new[] { "Tap", "Hold", "Flick", "SkyArea" };
-        var dlg = new Views.AddNoteDialog(typeNames, defaultDen) { Owner = this };
+        var dlg = new AddNoteDialog(typeNames, defaultDen) { Owner = GetHostWindow() };
         if (dlg.ShowDialog() != true) return;
 
         var request = dlg.SelectedType switch
         {
-            "Tap" => new Views.AddNoteRequest
+            "Tap" => new AddNoteRequest
             {
-                Type = Views.AddNoteType.Tap,
+                Type = AddNoteType.Tap,
                 GroundWidth = dlg.Kind
             },
-            "Hold" => new Views.AddNoteRequest
+            "Hold" => new AddNoteRequest
             {
-                Type = Views.AddNoteType.Hold,
+                Type = AddNoteType.Hold,
                 GroundWidth = dlg.Kind
             },
-            "Flick" => new Views.AddNoteRequest
+            "Flick" => new AddNoteRequest
             {
-                Type = Views.AddNoteType.Flick,
+                Type = AddNoteType.Flick,
                 Den = dlg.Den,
                 WidthNum = dlg.WidthNum,
                 Dir = dlg.Dir
             },
-            "SkyArea" => new Views.AddNoteRequest
+            "SkyArea" => new AddNoteRequest
             {
-                Type = Views.AddNoteType.SkyArea,
+                Type = AddNoteType.SkyArea,
                 Den = dlg.Den,
                 WidthNum = dlg.WidthNum,
                 WidthNum2 = dlg.WidthNum2,
@@ -932,8 +896,7 @@ public partial class MainWindow : Window
         _vm.Status = "请在预览中点击/拖动以放置音符（已自动吸附到辅助线）";
     }
 
-    // 接收预览放置结果并插入新音符到事件列表。
-    private void OnNotePlacementCommitted(Views.AddNotePlacement placement)
+    private void OnNotePlacementCommitted(AddNotePlacement placement)
     {
         if (_vm.PreviewEvents == null || _pendingAddRequest == null) return;
         var request = _pendingAddRequest;
@@ -947,14 +910,14 @@ public partial class MainWindow : Window
 
         ISpcEvent? newEvent = request.Type switch
         {
-            Views.AddNoteType.Tap => new SpcTap(timeMs, Math.Clamp(request.GroundWidth, 1, 4), placement.Lane),
-            Views.AddNoteType.Hold => new SpcHold(timeMs, placement.Lane, Math.Clamp(request.GroundWidth, 1, 6), duration),
-            Views.AddNoteType.Flick => new SpcFlick(timeMs,
+            AddNoteType.Tap => new SpcTap(timeMs, Math.Clamp(request.GroundWidth, 1, 4), placement.Lane),
+            AddNoteType.Hold => new SpcHold(timeMs, placement.Lane, Math.Clamp(request.GroundWidth, 1, 6), duration),
+            AddNoteType.Flick => new SpcFlick(timeMs,
                 placement.PosNum,
                 Math.Max(1, request.Den),
                 Math.Max(1, request.WidthNum),
                 request.Dir == 16 ? 16 : 4),
-            Views.AddNoteType.SkyArea => new SpcSkyArea(timeMs,
+            AddNoteType.SkyArea => new SpcSkyArea(timeMs,
                 placement.PosNum, Math.Max(1, request.Den), Math.Max(0, request.WidthNum),
                 placement.PosNum2, Math.Max(1, request.Den), Math.Max(0, request.WidthNum2),
                 request.LeftEase, request.RightEase,
@@ -977,10 +940,8 @@ public partial class MainWindow : Window
         _vm.Status = $"已添加 {newEvent.Type}（{newEvent.TimeMs}ms）";
     }
 
-    // 更新事件列表并刷新文本与预览。
     private void ApplyEventsAndRefresh(List<ISpcEvent> events)
     {
-        // 同步预览时间范围，避免新增/删除长音符后滑条上限滞后。
         static int EndTime(ISpcEvent e) => e switch
         {
             SpcHold h => h.TimeMs + h.DurationMs,
@@ -1000,7 +961,6 @@ public partial class MainWindow : Window
         RefreshPreviewEditButtonStates();
     }
 
-    // 清空预览编辑的撤回/恢复历史（通常在重新加载或重新转换谱面后调用）。
     private void ResetPreviewEditHistory()
     {
         _undoEventHistory.Clear();
@@ -1008,7 +968,6 @@ public partial class MainWindow : Window
         RefreshPreviewEditButtonStates();
     }
 
-    // 记录当前预览事件列表快照，供后续撤回。
     private void PushUndoSnapshotForPreviewEdit()
     {
         if (_vm.PreviewEvents == null) return;
@@ -1017,7 +976,6 @@ public partial class MainWindow : Window
         RefreshPreviewEditButtonStates();
     }
 
-    // 删除当前选中的音符并刷新预览与文本。
     private void BtnDeleteNote_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.PreviewEvents == null || _selectedRenderItem?.SourceEvent == null)
@@ -1043,14 +1001,12 @@ public partial class MainWindow : Window
         PushUndoSnapshotForPreviewEdit();
         events.RemoveAt(idx);
 
-        // 更新预览与文本
         ApplyEventsAndRefresh(events);
 
         HidePropPanel();
         _vm.Status = $"已删除 {removed.Type}（{removed.TimeMs}ms）";
     }
 
-    // 打开当前选中音符的编辑面板。
     private void BtnEditNote_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedRenderItem?.SourceEvent == null)
@@ -1062,7 +1018,6 @@ public partial class MainWindow : Window
         ShowPropPanel(_selectedRenderItem);
     }
 
-    // 撤回上一次预览编辑操作（添加/删除/编辑）。
     private void BtnUndoLastOperation_Click(object sender, RoutedEventArgs e)
     {
         if (_undoEventHistory.Count == 0)
@@ -1080,7 +1035,6 @@ public partial class MainWindow : Window
         _vm.Status = "已撤回上一次操作。";
     }
 
-    // 恢复刚刚撤回的预览编辑操作。
     private void BtnRedoLastOperation_Click(object sender, RoutedEventArgs e)
     {
         if (_redoEventHistory.Count == 0)
@@ -1098,31 +1052,24 @@ public partial class MainWindow : Window
         _vm.Status = "已恢复上一次操作。";
     }
 
-    // ===== 视图模式切换（合并/分离）=====
-
-    // 切换到合并预览模式并更新按钮样式。
     private void OnMergedViewClick(object sender, RoutedEventArgs e)
     {
         PreviewControl.ViewMode = PreviewViewMode.Merged;
-        BtnMergedView.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x33, 0x66, 0xAA));
-        BtnMergedView.Foreground = System.Windows.Media.Brushes.White;
+        BtnMergedView.ClearValue(Button.BackgroundProperty);
+        BtnMergedView.ClearValue(Button.ForegroundProperty);
         BtnSplitView.ClearValue(Button.BackgroundProperty);
         BtnSplitView.ClearValue(Button.ForegroundProperty);
     }
 
-    // 切换到分离预览模式并更新按钮样式。
     private void OnSplitViewClick(object sender, RoutedEventArgs e)
     {
         PreviewControl.ViewMode = PreviewViewMode.Split;
-        BtnSplitView.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x33, 0x66, 0xAA));
-        BtnSplitView.Foreground = System.Windows.Media.Brushes.White;
+        BtnSplitView.ClearValue(Button.BackgroundProperty);
+        BtnSplitView.ClearValue(Button.ForegroundProperty);
         BtnMergedView.ClearValue(Button.BackgroundProperty);
         BtnMergedView.ClearValue(Button.ForegroundProperty);
     }
 
-    // ===== 音符选中与属性面板 =====
-
-    // 收到预览控件的音符选中事件，更新当前选中项并按需关闭属性面板。
     private void OnNoteSelected(RenderItem? item)
     {
         if (_vm.IsPlaying && _vm.DisableNoteSelectionWhilePlaying)
@@ -1266,7 +1213,6 @@ public partial class MainWindow : Window
         AddIntFieldWithKey(label, label, value, minVal, maxVal);
     }
 
-    // 添加相关内容或字段。
     private void AddIntFieldWithKey(string fieldKey, string label, string value, int? minVal = null, int? maxVal = null)
     {
         // 标签
@@ -1315,7 +1261,6 @@ public partial class MainWindow : Window
         _propFields.Add((fieldKey, tb));
     }
 
-    // 添加相关内容或字段。
     private void AddLockedIntFieldWithKey(string fieldKey, string label, string value, int? minVal = null, int? maxVal = null)
     {
         var header = new Grid { Margin = new Thickness(0, 6, 0, 2) };
@@ -1388,7 +1333,6 @@ public partial class MainWindow : Window
         _propFields.Add((fieldKey, tb));
     }
 
-    // 添加相关内容或字段。
     private void AddGroupHeader(string text)
     {
         PropFieldsPanel.Children.Add(new TextBlock
@@ -1401,7 +1345,6 @@ public partial class MainWindow : Window
         });
     }
 
-    // 添加相关内容或字段。
     private void AddComboField(string label, string[] displayItems, int[] values, int selectedIndex)
     {
         PropFieldsPanel.Children.Add(MakeLabelBlock(label));
@@ -1945,10 +1888,9 @@ public partial class MainWindow : Window
         _audioStream = null;
     }
 
-    // 窗口关闭时停止播放并释放音频资源。
-    protected override void OnClosed(EventArgs e)
+    // 页面卸载时停止播放并释放音频资源。
+    private void ConverterPage_Unloaded(object sender, RoutedEventArgs e)
     {
-        base.OnClosed(e);
         StopPlayback();
         DisposeAudio();
     }
@@ -1956,7 +1898,7 @@ public partial class MainWindow : Window
     // 退出可视化预览模式并切回文本视图。
     private void BtnExitPreview_Click(object sender, RoutedEventArgs e)
     {
-        MenuVisualPreview.IsChecked = false;
+        PreviewModeToggle.IsChecked = false;
         OnPreviewToggled(sender, e);
     }
 }

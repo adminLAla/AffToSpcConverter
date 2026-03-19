@@ -1,4 +1,4 @@
-﻿namespace AffToSpcConverter.Convert;
+namespace InFalsusSongPackStudio.Convert;
 
 // 转换选项对象，保存谱面转换时的可调参数。
 public sealed class ConverterOptions

@@ -1,16 +1,13 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using AffToSpcConverter.Utils;
+using InFalsusSongPackStudio.Utils;
 
-namespace AffToSpcConverter.ViewModels;
+namespace InFalsusSongPackStudio.ViewModels;
 
 // “打包谱面”窗口中的单条谱面分档行 ViewModel。
-public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChanged
+public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChanged, IDataErrorInfo
 {
-    private bool _enabled;
-    public bool Enabled { get => _enabled; set { if (_enabled == value) return; _enabled = value; OnPropertyChanged(); } }
-
     private int _chartSlotIndex;
     public int ChartSlotIndex { get => _chartSlotIndex; set { if (_chartSlotIndex == value) return; _chartSlotIndex = value; OnPropertyChanged(); } }
 
@@ -18,7 +15,24 @@ public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChang
     public byte DifficultyFlag { get => _difficultyFlag; set { if (_difficultyFlag == value) return; _difficultyFlag = value; OnPropertyChanged(); } }
 
     private byte _available = 1;
-    public byte Available { get => _available; set { if (_available == value) return; _available = value; OnPropertyChanged(); } }
+    public byte Available
+    {
+        get => _available;
+        set
+        {
+            byte next = (byte)(value == 0 ? 0 : 1);
+            if (_available == next) return;
+            _available = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsAvailable));
+        }
+    }
+
+    public bool IsAvailable
+    {
+        get => Available != 0;
+        set => Available = (byte)(value ? 1 : 0);
+    }
 
     private int _rating;
     public int Rating { get => _rating; set { if (_rating == value) return; _rating = value; OnPropertyChanged(); } }
@@ -34,6 +48,22 @@ public sealed class BundleTexturePackageChartRowViewModel : INotifyPropertyChang
 
     private string _chartFilePath = "";
     public string ChartFilePath { get => _chartFilePath; set { if (_chartFilePath == value) return; _chartFilePath = value; OnPropertyChanged(); } }
+
+    public static bool IsSupportedDifficultyFlag(byte value)
+        => value is 1 or 2 or 4 or 8;
+
+    public string Error => string.Empty;
+
+    public string this[string columnName]
+    {
+        get
+        {
+            if (columnName == nameof(DifficultyFlag) && !IsSupportedDifficultyFlag(DifficultyFlag))
+                return "难度仅支持 1/2/4/8";
+
+            return string.Empty;
+        }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     // 处理 Property Changed 相关事件。

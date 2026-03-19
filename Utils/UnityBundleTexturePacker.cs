@@ -12,7 +12,7 @@ using AssetsTools.NET;
 using AssetsTools.NET.Extra;
 using AssetsTools.NET.Texture;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // bundle 中单个 Texture2D 的显示与定位信息。
 public sealed class BundleTextureEntry

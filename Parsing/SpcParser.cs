@@ -1,9 +1,9 @@
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace AffToSpcConverter.Parsing;
+namespace InFalsusSongPackStudio.Parsing;
 
 // SPC 文本解析器，负责把 .spc 文本解析为事件对象集合。
 public static class SpcParser

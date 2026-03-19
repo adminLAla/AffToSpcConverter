@@ -1,10 +1,10 @@
-﻿using AffToSpcConverter.ViewModels;
+using InFalsusSongPackStudio.ViewModels;
 using System;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // 统计信息生成器，用于从 SPC 文本和当前状态生成摘要报告。
 public static class ReportUtil

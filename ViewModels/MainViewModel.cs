@@ -1,9 +1,9 @@
-﻿using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace AffToSpcConverter.ViewModels;
+namespace InFalsusSongPackStudio.ViewModels;
 
 // 主窗口 ViewModel，负责转换、预览、设置与状态绑定。
 public class MainViewModel : INotifyPropertyChanged

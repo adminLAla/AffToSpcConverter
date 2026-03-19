@@ -6,13 +6,13 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using AffToSpcConverter.Convert.Preview;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Convert.Preview;
+using InFalsusSongPackStudio.Models;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 
-namespace AffToSpcConverter.Views
+namespace InFalsusSongPackStudio.Views
 {
     // 预览视图模式（分离视图/合并视图）。
     public enum PreviewViewMode { Split, Merged }
@@ -157,6 +157,8 @@ namespace AffToSpcConverter.Views
         private const double MaxPxPerMs = 1.50;
         // 左侧标尺区域固定宽度。
         private const double RulerW = 60.0;
+        // 右侧留白，避免第 6 轨贴边导致视觉不对称。
+        private const double ContentRightPad = 16.0;
         // 判定线距离控件底部的默认偏移。
         private const double JudgeFromBottom = 100.0;
         // 顶部预留内边距。
@@ -418,7 +420,7 @@ namespace AffToSpcConverter.Views
 
             float judgeY = (float)Math.Max(TopPad + 20, h - JudgeFromBottom);
             float contentLeft = (float)RulerW;
-            float contentW = (float)(w - RulerW);
+            float contentW = (float)(w - RulerW - ContentRightPad);
             if (contentW < 10) return;
 
             float panelH = judgeY - (float)TopPad;

@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // 数学辅助工具，封装常用数值计算与容差判断。
 public static class MathUtil

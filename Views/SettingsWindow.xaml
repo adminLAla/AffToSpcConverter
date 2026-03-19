@@ -1,4 +1,4 @@
-<Window x:Class="AffToSpcConverter.Views.SettingsWindow"
+<Window x:Class="InFalsusSongPackStudio.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="设置" Height="620" Width="560"
@@ -12,16 +12,53 @@
         <ScrollViewer Grid.Row="0">
             <StackPanel>
 
+                <GroupBox Header="打包设置" Margin="0,0,0,10">
+                    <Grid Margin="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="140"/>
+                            <ColumnDefinition Width="*" MinWidth="220"/>
+                            <ColumnDefinition Width="Auto" MinWidth="110"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="游戏目录" Margin="0,0,8,0"/>
+                        <TextBox x:Name="TbGameDirectory" Grid.Column="1" Margin="0,0,8,0"
+                                 IsReadOnly="True"
+                                 ToolTip="用于打包谱面/批量打包/恢复文件的全局游戏目录。"/>
+                        <Button Grid.Column="2" Content="选择目录" Click="BrowseGameDirectory_Click"/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="外观" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="140"/>
+                                <ColumnDefinition Width="*" MinWidth="220"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="背景主题"/>
+                            <ComboBox x:Name="CbThemeMode" Grid.Column="1" Width="220" SelectedValuePath="Tag" HorizontalAlignment="Left">
+                                <ComboBoxItem Content="跟随系统" Tag="system"/>
+                                <ComboBoxItem Content="浅色" Tag="light"/>
+                                <ComboBoxItem Content="深色" Tag="dark"/>
+                            </ComboBox>
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
                 <!-- 映射规则 -->
                 <GroupBox Header="映射规则" Margin="0,0,0,10">
                     <StackPanel Margin="10">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="映射规则"/>
-                            <ComboBox Width="200" SelectedValue="{Binding MappingRule}" SelectedValuePath="Content">
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="200"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="映射规则"/>
+                            <ComboBox Grid.Column="1" Width="200" HorizontalAlignment="Left" SelectedValue="{Binding MappingRule}" SelectedValuePath="Content">
                                 <ComboBoxItem Content="暴力映射(不推荐)"/>
                                 <ComboBoxItem Content="自建规则"/>
                             </ComboBox>
-                        </StackPanel>
+                        </Grid>
                         <Button Width="200" HorizontalAlignment="Left" Margin="180,0,0,0"
                                 Click="OpenCustomMapping_Click"
                                 Content="编辑自建规则..."/>
@@ -33,27 +70,43 @@
                     <StackPanel Margin="10">
                         <CheckBox Content="启用 Tap 宽度样式" IsChecked="{Binding TapWidthPatternEnabled}" Margin="0,0,0,6"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="样式（如 1,2,1,2）"/>
-                            <TextBox Width="200" Text="{Binding TapWidthPattern}"/>
-                        </StackPanel>
+                        <Grid Margin="22,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="200"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="样式（如 1,2,1,2）"/>
+                            <TextBox Grid.Column="1" Width="200" HorizontalAlignment="Left" Text="{Binding TapWidthPattern}"/>
+                        </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="密集阻值（ms，0=自动）"/>
-                            <TextBox Width="100" Text="{Binding DenseTapThresholdMs}"/>
-                        </StackPanel>
+                        <Grid Margin="22,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="密集阻值（ms，0=自动）"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding DenseTapThresholdMs}"/>
+                        </Grid>
 
                         <CheckBox Content="随机化 Hold 宽度" IsChecked="{Binding HoldWidthRandomEnabled}" Margin="0,12,0,6"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="22,0,0,6">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="最大 Hold 宽度"/>
-                            <TextBox Width="100" Text="{Binding HoldWidthRandomMax}"/>
-                        </StackPanel>
+                        <Grid Margin="22,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="最大 Hold 宽度"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding HoldWidthRandomMax}"/>
+                        </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="随机稿子"/>
-                            <TextBox Width="100" Text="{Binding RandomSeed}"/>
-                        </StackPanel>
+                        <Grid Margin="22,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="随机稿子"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding RandomSeed}"/>
+                        </Grid>
                     </StackPanel>
                 </GroupBox>
 
@@ -66,66 +119,102 @@
                 <!-- 高级设置 -->
                 <GroupBox Header="高级设置" Margin="0,10,0,0">
                     <StackPanel Margin="10">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="220" VerticalAlignment="Center" Text="全局时间偏移（ms）"/>
-                            <TextBox Width="100" Text="{Binding GlobalTimeOffsetMs}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="220"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="全局时间偏移（ms）"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding GlobalTimeOffsetMs}"/>
+                        </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="220" VerticalAlignment="Center" Text="最小 Hold 时长（ms，短于此转为 Tap）"/>
-                            <TextBox Width="100" Text="{Binding MinHoldDurationMs}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="220"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="最小 Hold 时长（ms，短于此转为 Tap）"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding MinHoldDurationMs}"/>
+                        </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="220" VerticalAlignment="Center" Text="最小 SkyArea 时长（ms，短于此丢弃）"/>
-                            <TextBox Width="100" Text="{Binding MinSkyAreaDurationMs}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="220"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="最小 SkyArea 时长（ms，短于此丢弃）"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding MinSkyAreaDurationMs}"/>
+                        </Grid>
 
                         <CheckBox Content="输出 BPM 变速事件" IsChecked="{Binding OutputBpmChanges}" Margin="0,0,0,6"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="220" VerticalAlignment="Center" Text="Tap 去重阈值（ms，0=不合并）"/>
-                            <TextBox Width="100" Text="{Binding DeduplicateTapThresholdMs}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="220"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Tap 去重阈值（ms，0=不合并）"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding DeduplicateTapThresholdMs}"/>
+                        </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="220" VerticalAlignment="Center" Text="排序模式"/>
-                            <ComboBox Width="140" SelectedValue="{Binding SortMode}" SelectedValuePath="Content">
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="220"/>
+                                <ColumnDefinition Width="*" MinWidth="140"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="排序模式"/>
+                            <ComboBox Grid.Column="1" Width="140" HorizontalAlignment="Left" SelectedValue="{Binding SortMode}" SelectedValuePath="Content">
                                 <ComboBoxItem Content="timeFirst"/>
                                 <ComboBoxItem Content="typeFirst"/>
                             </ComboBox>
-                        </StackPanel>
+                        </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
-                            <TextBlock Width="220" VerticalAlignment="Center" Text="编辑撤销栈深度（文本/预览）"/>
-                            <TextBox Width="100" Text="{Binding TextEditUndoLimit}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="220"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="编辑撤销栈深度（文本/预览）"/>
+                            <TextBox Grid.Column="1" Width="100" HorizontalAlignment="Left" Text="{Binding TextEditUndoLimit}"/>
+                        </Grid>
+
+                        <CheckBox x:Name="CbAutoRenameWhenLocked"
+                                  Margin="0,10,0,0"
+                                  Content="目标文件被占用时，自动另存为 xxx (1).bundle/.assets"/>
                     </StackPanel>
                 </GroupBox>
 
                 <GroupBox Header="预览（可选）" Margin="0,10,0,0">
                     <StackPanel Margin="10">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="目标 FPS"/>
-                            <ComboBox Width="160" SelectedValuePath="Content" SelectedValue="{Binding PreviewTargetFps}">
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="160"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="目标 FPS"/>
+                            <ComboBox Grid.Column="1" Width="160" HorizontalAlignment="Left" SelectedValuePath="Content" SelectedValue="{Binding PreviewTargetFps}">
                                 <ComboBoxItem Content="60"/>
                                 <ComboBoxItem Content="120"/>
                                 <ComboBoxItem Content="144"/>
                                 <ComboBoxItem Content="165"/>
                             </ComboBox>
-                        </StackPanel>
+                        </Grid>
                         <CheckBox Content="启用 VSync（跟随显示器刷新）" IsChecked="{Binding PreviewUseVsync}" Margin="0,0,0,6"/>
                         <TextBlock Text="启用 VSync 时，目标 FPS 仅在关闭 VSync 后生效。"
                                    Foreground="#777777" FontSize="11" Margin="22,0,0,6"/>
                         <CheckBox Content="显示 FPS/ft" IsChecked="{Binding ShowFpsStats}"/>
                         <CheckBox Content="播放时鼠标不可选中音符" IsChecked="{Binding DisableNoteSelectionWhilePlaying}" Margin="0,8,0,6"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
-                            <TextBlock Width="180" VerticalAlignment="Center" Text="编辑音符触发方式"/>
-                            <ComboBox Width="220" SelectedValuePath="Tag" SelectedValue="{Binding PreviewNoteEditTriggerMode}">
+                        <Grid Margin="0,0,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="180"/>
+                                <ColumnDefinition Width="*" MinWidth="220"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="编辑音符触发方式"/>
+                            <ComboBox Grid.Column="1" Width="220" HorizontalAlignment="Left" SelectedValuePath="Tag" SelectedValue="{Binding PreviewNoteEditTriggerMode}">
                                 <ComboBoxItem Tag="single" Content="鼠标左键单击音符编辑"/>
                                 <ComboBoxItem Tag="double" Content="鼠标左键双击音符编辑"/>
                             </ComboBox>
-                        </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </GroupBox>
 
@@ -134,7 +223,8 @@
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Width="90" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click">确定</Button>
-            <Button Width="90" IsCancel="True">取消</Button>
+            <Button Width="90" Click="Cancel_Click">取消</Button>
+            <Button Width="90" Margin="8,0,0,0" Click="Apply_Click">应用</Button>
         </StackPanel>
     </Grid>
 </Window>

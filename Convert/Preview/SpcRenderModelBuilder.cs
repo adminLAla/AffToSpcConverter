@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 
-namespace AffToSpcConverter.Convert.Preview
+namespace InFalsusSongPackStudio.Convert.Preview
 {
     // 预览渲染模型构建器，把 SPC 事件转成可绘制的时间轴元素。
     public static class SpcRenderModelBuilder

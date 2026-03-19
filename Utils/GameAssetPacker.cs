@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 using System.Linq;
 using System.Collections.Generic;
 
-namespace AffToSpcConverter.Utils;
+namespace InFalsusSongPackStudio.Utils;
 
 // 游戏资源加密打包器，用于按映射表替换并输出加密资源文件。
 public class GameAssetPacker

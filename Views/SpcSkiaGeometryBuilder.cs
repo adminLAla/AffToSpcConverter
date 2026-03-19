@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using AffToSpcConverter.Convert.Preview;
+using InFalsusSongPackStudio.Convert.Preview;
 using SkiaSharp;
 
-namespace AffToSpcConverter.Views
+namespace InFalsusSongPackStudio.Views
 {
     // Skia 预览几何构建器，生成 SKPath/SKPoint 等绘制数据。
     public static class SpcSkiaGeometryBuilder

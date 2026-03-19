@@ -1,4 +1,4 @@
-<Window x:Class="AffToSpcConverter.Views.AddNoteDialog"
+<Window x:Class="InFalsusSongPackStudio.Views.AddNoteDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="添加音符" Height="420" Width="400"

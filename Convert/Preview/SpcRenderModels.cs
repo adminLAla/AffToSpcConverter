@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using AffToSpcConverter.Models;
+using InFalsusSongPackStudio.Models;
 
-namespace AffToSpcConverter.Convert.Preview
+namespace InFalsusSongPackStudio.Convert.Preview
 {
     public enum RenderItemType { GroundTap, GroundHold, SkyFlick, SkyArea }
 
