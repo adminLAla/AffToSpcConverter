@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using InFalsusSongPackStudio.Utils;
 using InFalsusSongPackStudio.ViewModels;
 using Microsoft.Win32;
@@ -21,8 +22,16 @@ namespace InFalsusSongPackStudio.Views;
 public partial class BundleTexturePackageWindow : Window
 {
     private const int MaxChartRowCount = 4;
+    private const double RightPanelExpandedWidth = 320;
+    private const double ChartGridHeaderHeight = 30;
+    private const double ChartGridRowHeight = 26;
+    private const double ChartGridPaddingHeight = 6;
     private readonly BundleTexturePackageViewModel _vm = new();
     private SongBundleScanResult? _bundleScan;
+    private bool _isRightPanelCollapsed;
+    private bool _hasExportedCurrentSong;
+    private int? _pendingZipExportSlotToLock;
+    private readonly HashSet<int> _lockedSongSlotsAfterZipReset = new();
 
     // 初始化“打包谱面”窗口。
     public BundleTexturePackageWindow()
@@ -44,7 +53,95 @@ public partial class BundleTexturePackageWindow : Window
         foreach (var row in _vm.ChartRows)
             row.PropertyChanged += ChartRow_PropertyChanged;
 
+        ApplySavedGameDirectory();
+        ApplyRightPanelState();
+
         UpdateOperationGuide();
+    }
+
+    private void ToggleRightPanel_Click(object sender, RoutedEventArgs e)
+    {
+        _isRightPanelCollapsed = !_isRightPanelCollapsed;
+        ApplyRightPanelState();
+    }
+
+    private void ApplyRightPanelState()
+    {
+        if (_isRightPanelCollapsed)
+        {
+            RightPanel.Visibility = Visibility.Collapsed;
+            RightPanelColumn.Width = new GridLength(0);
+            Grid.SetColumn(BtnToggleRightPanel, 0);
+            BtnToggleRightPanel.HorizontalAlignment = HorizontalAlignment.Right;
+            BtnToggleRightPanel.Margin = new Thickness(0, 8, 26, 0);
+            BtnToggleRightPanel.Content = "<";
+            BtnToggleRightPanel.ToolTip = "展开右侧栏";
+            ResetChartGridHorizontalOffset();
+            return;
+        }
+
+        RightPanel.Visibility = Visibility.Visible;
+        RightPanelColumn.Width = new GridLength(RightPanelExpandedWidth);
+        Grid.SetColumn(BtnToggleRightPanel, 1);
+        BtnToggleRightPanel.HorizontalAlignment = HorizontalAlignment.Right;
+        BtnToggleRightPanel.Margin = new Thickness(0, 8, 8, 0);
+        BtnToggleRightPanel.Content = "☰";
+        BtnToggleRightPanel.ToolTip = "收起右侧栏";
+        ResetChartGridHorizontalOffset();
+    }
+
+    private void ShowPrompt(string title, string message)
+    {
+        AppPromptDialog.Show(this, title, message);
+    }
+
+    private void ChartRowsGrid_Loaded(object sender, RoutedEventArgs e)
+    {
+        ResetChartGridHorizontalOffset();
+        UpdateChartGridHeight();
+    }
+
+    private void ResetChartGridHorizontalOffset()
+    {
+        if (ChartRowsGrid == null) return;
+
+        var scroller = FindVisualChild<ScrollViewer>(ChartRowsGrid);
+        scroller?.ScrollToHorizontalOffset(0);
+    }
+
+    private void FocusChartGridFirstColumn(object? rowItem = null)
+    {
+        if (ChartRowsGrid == null || ChartRowsGrid.Columns.Count == 0)
+            return;
+
+        object? targetRow = rowItem;
+        if (targetRow == null)
+            targetRow = ChartRowsGrid.SelectedItem;
+        if (targetRow == null && ChartRowsGrid.Items.Count > 0)
+            targetRow = ChartRowsGrid.Items[0];
+        if (targetRow == null)
+            return;
+
+        ChartRowsGrid.CurrentCell = new DataGridCellInfo(targetRow, ChartRowsGrid.Columns[0]);
+        ChartRowsGrid.ScrollIntoView(targetRow, ChartRowsGrid.Columns[0]);
+        ResetChartGridHorizontalOffset();
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typed)
+                return typed;
+
+            var found = FindVisualChild<T>(child);
+            if (found != null)
+                return found;
+        }
+
+        return null;
     }
 
     // 关闭窗口时主动释放持有的数据与事件订阅，降低内存驻留。
@@ -117,28 +214,29 @@ public partial class BundleTexturePackageWindow : Window
                 item.PropertyChanged += ChartRow_PropertyChanged;
         }
 
+        UpdateChartGridHeight();
         UpdateOperationGuide();
+    }
+
+    private void UpdateChartGridHeight()
+    {
+        if (ChartRowsGrid == null) return;
+
+        int rowCount = Math.Max(1, _vm.ChartRows.Count);
+        double height = ChartGridHeaderHeight + rowCount * ChartGridRowHeight + ChartGridPaddingHeight;
+        ChartRowsGrid.Height = height;
     }
 
     private void ChartRow_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(BundleTexturePackageChartRowViewModel.Enabled)
+        if (e.PropertyName is nameof(BundleTexturePackageChartRowViewModel.Available)
+            or nameof(BundleTexturePackageChartRowViewModel.IsAvailable)
             or nameof(BundleTexturePackageChartRowViewModel.ChartFilePath)
             or nameof(BundleTexturePackageChartRowViewModel.ChartSlotIndex)
             or nameof(BundleTexturePackageChartRowViewModel.DifficultyFlag))
         {
             UpdateOperationGuide();
         }
-    }
-
-    // 选择游戏根目录（In Falsus Demo），并自动定位 .bundle / sharedassets0.assets。
-    private void BtnBrowseGameDirectory_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog();
-        if (dialog.ShowDialog() != true) return;
-
-        ApplyGameDirectory(dialog.FolderName);
-        UpdateOperationGuide();
     }
 
     // 选择新增歌曲曲绘（用于写入新 Texture2D）。
@@ -199,11 +297,73 @@ public partial class BundleTexturePackageWindow : Window
         UpdateOperationGuide();
     }
 
-    // 旧版手动选择导出目录入口（当前流程固定输出到游戏根目录\SongData，保留方法以兼容旧 XAML 事件名）。
+    // 选择导出目录，默认推荐游戏根目录下 SongData。
     private void BtnBrowseOutput_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("当前版本会自动输出到游戏根目录下的 SongData 文件夹，无需手动选择。", "提示",
-            MessageBoxButton.OK, MessageBoxImage.Information);
+        var dialog = new OpenFolderDialog
+        {
+            Title = "选择导出目录"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        _vm.OutputDirectory = dialog.FolderName;
+        _vm.Status = $"已设置输出目录：{_vm.OutputDirectory}";
+        UpdateOperationGuide();
+    }
+
+    private void BtnReset_Click(object sender, RoutedEventArgs e)
+    {
+        ResetForNextSong();
+    }
+
+    private void ResetForNextSong()
+    {
+        ConsumePendingZipExportSlotLock();
+        _hasExportedCurrentSong = false;
+        _vm.BaseName = string.Empty;
+        _vm.SongTitleEnglish = string.Empty;
+        _vm.SongArtistEnglish = string.Empty;
+        _vm.DisplayNameSectionIndicator = "A";
+        _vm.DisplayArtistSectionIndicator = "A";
+        _vm.GameplayBackground = 3;
+        _vm.RewardStyle = 0;
+        _vm.JacketImageFilePath = string.Empty;
+        _vm.BgmFilePath = string.Empty;
+        _vm.PreviewStartSeconds = 0;
+        _vm.PreviewEndSeconds = 15;
+        _vm.KeepJacketOriginalSize = true;
+
+        _vm.ChartRows.Clear();
+        var row = CreateDefaultChartRow();
+        _vm.ChartRows.Add(row);
+        _vm.SelectedChartRow = row;
+        ChartRowsGrid.SelectedItem = row;
+        FocusChartGridFirstColumn(row);
+
+        _vm.Status = "已重置当前歌曲表单，可继续导入下一首。";
+        UpdateOperationGuide();
+    }
+
+    private void ConsumePendingZipExportSlotLock()
+    {
+        if (!_pendingZipExportSlotToLock.HasValue)
+            return;
+
+        int slotIndex = _pendingZipExportSlotToLock.Value;
+        _pendingZipExportSlotToLock = null;
+
+        if (!_lockedSongSlotsAfterZipReset.Add(slotIndex))
+            return;
+
+        var target = _vm.EmptySongSlots.FirstOrDefault(x => x.SlotIndex == slotIndex);
+        if (target != null)
+            _vm.EmptySongSlots.Remove(target);
+
+        if (_vm.SelectedSongSlot?.SlotIndex == slotIndex)
+            _vm.SelectedSongSlot = _vm.EmptySongSlots.FirstOrDefault();
+
+        _vm.Status = $"已重置，并锁定上次导出曲包使用的槽位 [{slotIndex:00}]，本轮不再提供。";
     }
 
     // 重新扫描 .bundle，读取 SongDatabase 空槽和可作为模板的曲绘资源。
@@ -217,7 +377,7 @@ public partial class BundleTexturePackageWindow : Window
     {
         if (_vm.ChartRows.Count >= MaxChartRowCount)
         {
-            MessageBox.Show($"谱面项最多只能添加 {MaxChartRowCount} 个。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowPrompt("提示", $"谱面项最多只能添加 {MaxChartRowCount} 个。");
             return;
         }
 
@@ -225,7 +385,7 @@ public partial class BundleTexturePackageWindow : Window
         _vm.ChartRows.Add(row);
         _vm.SelectedChartRow = row;
         ChartRowsGrid.SelectedItem = row;
-        ChartRowsGrid.ScrollIntoView(row);
+        FocusChartGridFirstColumn(row);
     }
 
     // 删除当前选中的 ChartInfo 配置行。
@@ -233,13 +393,14 @@ public partial class BundleTexturePackageWindow : Window
     {
         if (_vm.SelectedChartRow == null)
         {
-            MessageBox.Show("请先在表格中选中一条谱面项。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowPrompt("提示", "请先在表格中选中一条谱面项。");
             return;
         }
 
         _vm.ChartRows.Remove(_vm.SelectedChartRow);
         _vm.SelectedChartRow = _vm.ChartRows.LastOrDefault();
         ChartRowsGrid.SelectedItem = _vm.SelectedChartRow;
+        FocusChartGridFirstColumn(_vm.SelectedChartRow);
         UpdateOperationGuide();
     }
 
@@ -248,7 +409,7 @@ public partial class BundleTexturePackageWindow : Window
     {
         if (_vm.SelectedChartRow == null)
         {
-            MessageBox.Show("请先在表格中选中一条谱面项。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowPrompt("提示", "请先在表格中选中一条谱面项。");
             return;
         }
 
@@ -320,7 +481,7 @@ public partial class BundleTexturePackageWindow : Window
         catch (Exception ex)
         {
             App.LogHandledException("打包谱面-照抄已有曲目设置", ex);
-            MessageBox.Show($"照抄设置失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowPrompt("错误", $"照抄设置失败：{ex.Message}");
         }
     }
 
@@ -351,7 +512,7 @@ public partial class BundleTexturePackageWindow : Window
             string songJsonPath = Path.Combine(extractDir, "song.json");
             if (!File.Exists(songJsonPath))
             {
-                MessageBox.Show("曲包内未找到 song.json。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowPrompt("错误", "曲包内未找到 song.json。");
                 return;
             }
 
@@ -386,9 +547,8 @@ public partial class BundleTexturePackageWindow : Window
                     var chartFileName = chart.TryGetProperty("SourceChartFileName", out var chartFile) ? chartFile.GetString() ?? "" : "";
                     var row = new BundleTexturePackageChartRowViewModel
                     {
-                        Enabled = true,
                         ChartSlotIndex = chart.TryGetProperty("ChartSlotIndex", out var idx) ? idx.GetInt32() : 0,
-                        DifficultyFlag = chart.TryGetProperty("DifficultyFlag", out var diff) ? diff.GetByte() : (byte)1,
+                        DifficultyFlag = chart.TryGetProperty("DifficultyFlag", out var diff) && diff.TryGetByte(out var diffValue) ? diffValue : (byte)1,
                         Available = chart.TryGetProperty("Available", out var avail) ? avail.GetByte() : (byte)1,
                         Rating = chart.TryGetProperty("Rating", out var rating) ? rating.GetInt32() : 1,
                         LevelSectionIndicator = chart.TryGetProperty("LevelSectionIndicator", out var lvl) ? lvl.GetString() ?? "1" : "1",
@@ -400,10 +560,28 @@ public partial class BundleTexturePackageWindow : Window
                 }
             }
 
+            int preferredSlotIndex = TryReadPreferredSlotIndex(songInfo);
+            if (preferredSlotIndex >= 2)
+            {
+                if (_vm.EmptySongSlots.Count == 0 && !string.IsNullOrWhiteSpace(_vm.BundleFilePath) && File.Exists(_vm.BundleFilePath))
+                    ReloadBundleScan();
+
+                var preferredSlot = _vm.EmptySongSlots.FirstOrDefault(x => x.SlotIndex == preferredSlotIndex);
+                if (preferredSlot != null)
+                    _vm.SelectedSongSlot = preferredSlot;
+            }
+
             _vm.Status = $"曲包已解压到：{extractDir}\n曲绘：{_vm.JacketImageFilePath}\nBGM：{_vm.BgmFilePath}\n谱面数：{_vm.ChartRows.Count}";
+            if (preferredSlotIndex >= 2)
+            {
+                if (_vm.SelectedSongSlot?.SlotIndex == preferredSlotIndex)
+                    _vm.Status += $"\n已回填曲包槽位：{preferredSlotIndex}";
+                else
+                    _vm.Status += $"\n曲包请求槽位：{preferredSlotIndex}（当前资源中未找到同槽位，请手动选择）";
+            }
             UpdateOperationGuide();
 
-            MessageBox.Show("曲包导入并解压成功。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowPrompt("成功", "曲包导入并解压成功。");
         }
         catch (Exception ex)
         {
@@ -412,7 +590,7 @@ public partial class BundleTexturePackageWindow : Window
             string details = BuildExceptionDetails(ex);
             _vm.Status = $"导入失败：\n{details}";
             UpdateOperationGuide();
-            MessageBox.Show($"导入失败：\n{summary}\n\n详细信息已写入下方状态区。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowPrompt("错误", $"导入失败：\n{summary}\n\n详细信息已写入下方状态区。");
         }
     }
 
@@ -448,6 +626,7 @@ public partial class BundleTexturePackageWindow : Window
                 BgmFileName = Path.GetFileName(request.BgmFilePath),
                 BaseName = request.BaseName,
                 KeepJacketOriginalSize = request.KeepJacketOriginalSize,
+                SelectedSlotIndex = request.SelectedSlot.SlotIndex,
                 SelectedSlot = request.SelectedSlot,
                 JacketTemplate = request.JacketTemplate,
                 PreviewStartSeconds = request.PreviewStartSeconds,
@@ -462,12 +641,12 @@ public partial class BundleTexturePackageWindow : Window
                 {
                     SourceChartFileName = Path.GetFileName(c.SourceChartFilePath),
                     c.ChartSlotIndex,
-                    c.DifficultyFlag,
                     c.Available,
-                    c.Rating,
-                    c.LevelSectionIndicator,
+                    c.DifficultyFlag,
                     c.DisplayChartDesigner,
-                    c.DisplayJacketDesigner
+                    c.DisplayJacketDesigner,
+                    c.Rating,
+                    c.LevelSectionIndicator
                 }).ToList(),
                 AutoRenameWhenTargetLocked = request.AutoRenameWhenTargetLocked
             };
@@ -508,9 +687,11 @@ public partial class BundleTexturePackageWindow : Window
             }
 
             _vm.Status = $"已成功导出曲包到：{dialog.FileName}";
+            _hasExportedCurrentSong = true;
+            _pendingZipExportSlotToLock = request.SelectedSlot.SlotIndex;
             UpdateOperationGuide();
 
-            MessageBox.Show($"导出成功：\n{dialog.FileName}", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowPrompt("成功", $"导出成功：\n{dialog.FileName}");
         }
         catch (Exception ex)
         {
@@ -519,7 +700,7 @@ public partial class BundleTexturePackageWindow : Window
             string details = BuildExceptionDetails(ex);
             _vm.Status = $"导出失败：\n{details}";
             UpdateOperationGuide();
-            MessageBox.Show($"导出失败：\n{summary}\n\n详细信息已写入下方状态区。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowPrompt("错误", $"导出失败：\n{summary}\n\n详细信息已写入下方状态区。");
         }
     }
 
@@ -554,13 +735,12 @@ public partial class BundleTexturePackageWindow : Window
             }
 
             _vm.Status = sb.ToString().TrimEnd();
+            _hasExportedCurrentSong = true;
             UpdateOperationGuide();
 
-            MessageBox.Show(
-                $"新增歌曲资源导出成功。\n\nbundle：{Path.GetFileName(result.OutputBundlePath)}\nsharedassets：{Path.GetFileName(result.OutputSharedAssetsPath)}\nresources：{Path.GetFileName(result.OutputResourcesAssetsPath)}\n新增映射：{result.AddedMappingEntries.Count} 项",
+            ShowPrompt(
                 "成功",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                $"新增歌曲资源导出成功。\n\nbundle：{Path.GetFileName(result.OutputBundlePath)}\nsharedassets：{Path.GetFileName(result.OutputSharedAssetsPath)}\nresources：{Path.GetFileName(result.OutputResourcesAssetsPath)}\n新增映射：{result.AddedMappingEntries.Count} 项");
         }
         catch (Exception ex)
         {
@@ -569,7 +749,7 @@ public partial class BundleTexturePackageWindow : Window
             string details = BuildExceptionDetails(ex);
             _vm.Status = $"导出失败：\n{details}";
             UpdateOperationGuide();
-            MessageBox.Show($"导出失败：\n{summary}\n\n详细信息已写入下方状态区。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowPrompt("错误", $"导出失败：\n{summary}\n\n详细信息已写入下方状态区。");
         }
     }
 
@@ -584,16 +764,16 @@ public partial class BundleTexturePackageWindow : Window
             !string.IsNullOrWhiteSpace(_vm.BaseName) &&
             !string.IsNullOrWhiteSpace(_vm.SongTitleEnglish) &&
             !string.IsNullOrWhiteSpace(_vm.SongArtistEnglish);
-        bool hasAtLeastOneChart = _vm.ChartRows.Any(x => x.Enabled && !string.IsNullOrWhiteSpace(x.ChartFilePath));
+        bool hasAtLeastOneChart = _vm.ChartRows.Any(x => !string.IsNullOrWhiteSpace(x.ChartFilePath));
 
         var steps = new List<(bool done, string text)>
         {
-            (hasGameDirectory, "导入游戏所在目录（In Falsus Demo）"),
+            (hasGameDirectory, "在设置中配置游戏目录（In Falsus Demo）"),
             (hasSlotAndTemplate, "确认空槽与曲绘模板（必要时点“扫描.bundle”）"),
             (hasJacket, "导入曲绘"),
             (hasBgm, "导入 BGM"),
             (hasBasicMeta, "填写 BaseName / 曲名(English) / 曲师(English)"),
-            (hasAtLeastOneChart, "至少配置 1 条启用谱面并选择谱面文件")
+            (hasAtLeastOneChart, "至少配置 1 条谱面并选择谱面文件")
         };
 
         string? nextStep = steps.FirstOrDefault(x => !x.done).text;
@@ -610,12 +790,46 @@ public partial class BundleTexturePackageWindow : Window
 
         sb.AppendLine();
         sb.AppendLine("可选操作：");
-        sb.AppendLine("- 点击“照抄已有曲目设置”快速填充 4 个显示/行为字段。" );
-        sb.AppendLine("- 若自动定位不完整，可重新点击“选择目录”或“扫描.bundle”。");
+        sb.AppendLine("- 点击“照抄曲绘模板对应曲目的设置”快速填充 4 个显示/行为字段。" );
+        sb.AppendLine("- 点击“导出为曲包”可生成单曲 ZIP，后续可用于批量打包导入。" );
+        sb.AppendLine("- 批量处理多首歌曲时，可进入“批量打包”：先批量导入 ZIP，再批量导出到游戏目录。" );
+        sb.AppendLine("- 若资源定位异常，可在设置中调整游戏目录后重新扫描 .bundle。" );
+        if (_lockedSongSlotsAfterZipReset.Count > 0)
+            sb.AppendLine($"- 已锁定槽位（重置后不再提供）：{string.Join(", ", _lockedSongSlotsAfterZipReset.OrderBy(x => x).Select(x => $"[{x:00}]"))}" );
+        if (_pendingZipExportSlotToLock.HasValue)
+            sb.AppendLine($"- 当前已记录待锁定槽位：[{_pendingZipExportSlotToLock.Value:00}]。点击“重置”后将从可选槽位中移除。" );
+        if (_hasExportedCurrentSong)
+            sb.AppendLine("- 当前歌曲已导出完成；若要导入下一首，点击下方“重置”即可开始下一轮。" );
         sb.AppendLine();
         sb.AppendLine($"下一步：{nextStep}");
-
         _vm.OperationGuide = sb.ToString().TrimEnd();
+    }
+
+    private void ApplySavedGameDirectory()
+    {
+        var settings = AppGlobalSettingsStore.Load();
+        _vm.AutoRenameWhenTargetLocked = settings.AutoRenameWhenTargetLocked;
+
+        string gameDirectory = (settings.GameDirectory ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(gameDirectory))
+        {
+            _vm.GameDirectory = string.Empty;
+            _vm.BundleFilePath = string.Empty;
+            _vm.SharedAssetsFilePath = string.Empty;
+            _vm.ResourcesAssetsFilePath = string.Empty;
+            _vm.OutputDirectory = string.Empty;
+            _vm.Status = "未配置全局游戏目录，请在设置中先选择游戏根目录。";
+            ResourceLocateHintText.Text = "资源文件尚未定位，请先在设置中配置有效游戏目录。";
+            return;
+        }
+
+        ApplyGameDirectory(gameDirectory);
+    }
+
+    // 供主壳窗口在“设置已应用”后主动刷新。
+    public void RefreshFromGlobalSettings()
+    {
+        ApplySavedGameDirectory();
     }
 
     // 扫描当前 .bundle，并刷新空槽列表与曲绘模板列表。
@@ -637,6 +851,9 @@ public partial class BundleTexturePackageWindow : Window
             _vm.EmptySongSlots.Clear();
             foreach (var slot in _bundleScan.Slots.Where(x => x.SlotIndex >= 2))
             {
+                if (_lockedSongSlotsAfterZipReset.Contains(slot.SlotIndex))
+                    continue;
+
                 // 格式: [slot_id]<basename>(id=_id,Charts=_charts)
                 string basename = string.IsNullOrWhiteSpace(slot.BaseName) ? "空槽" : slot.BaseName;
                 //slot.DisplayText = $"[{slot.SlotIndex:D2}]{basename}(id={slot.SongIdValue},Charts={slot.ChartCount})";
@@ -689,7 +906,7 @@ public partial class BundleTexturePackageWindow : Window
             _vm.SelectedSongSlot = null;
             _vm.SelectedJacketTemplate = null;
             _vm.Status = $"扫描 .bundle 失败：{ex.Message}";
-            MessageBox.Show($"扫描 .bundle 失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowPrompt("错误", $"扫描 .bundle 失败：{ex.Message}");
         }
     }
 
@@ -700,6 +917,9 @@ public partial class BundleTexturePackageWindow : Window
             return;
 
         string root = Path.GetFullPath(gameDirectory);
+        string previousGameDirectory = _vm.GameDirectory;
+        string previousOutputDirectory = _vm.OutputDirectory;
+
         _vm.GameDirectory = root;
 
         string dataDir = Path.Combine(root, "if-app_Data");
@@ -709,7 +929,8 @@ public partial class BundleTexturePackageWindow : Window
             _vm.SharedAssetsFilePath = "";
             _vm.ResourcesAssetsFilePath = "";
             _vm.Status = $"目录不符合预期结构：未找到 if-app_Data\n{root}";
-            MessageBox.Show("未在该目录下找到 if-app_Data。\n请选择游戏根目录（例如 In Falsus Demo）。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ResourceLocateHintText.Text = "资源文件尚未定位：未找到 if-app_Data，请在设置中选择正确游戏目录。";
+            ShowPrompt("错误", "未在该目录下找到 if-app_Data。\n请选择游戏根目录（例如 In Falsus Demo）。");
             return;
         }
 
@@ -722,7 +943,17 @@ public partial class BundleTexturePackageWindow : Window
         _vm.ResourcesAssetsFilePath = File.Exists(resourcesAssets) ? resourcesAssets : "";
         _vm.BundleFilePath = ResolveTargetSongBundlePath(bundleDir, defaultBundle) ?? "";
 
-        _vm.OutputDirectory = Path.Combine(root, "SongData");
+        string newDefaultOutputDirectory = Path.Combine(root, "SongData");
+        string previousDefaultOutputDirectory = string.IsNullOrWhiteSpace(previousGameDirectory)
+            ? string.Empty
+            : Path.Combine(previousGameDirectory, "SongData");
+
+        bool shouldResetToDefaultOutput =
+            string.IsNullOrWhiteSpace(previousOutputDirectory) ||
+            string.Equals(previousOutputDirectory, previousDefaultOutputDirectory, StringComparison.OrdinalIgnoreCase);
+
+        if (shouldResetToDefaultOutput)
+            _vm.OutputDirectory = newDefaultOutputDirectory;
 
         var notes = new List<string>();
         if (!File.Exists(sharedAssets))
@@ -740,9 +971,11 @@ public partial class BundleTexturePackageWindow : Window
             _vm.SelectedSongSlot = null;
             _vm.SelectedJacketTemplate = null;
             _vm.Status = "自动定位未完成：\n" + string.Join("\n", notes);
+            ResourceLocateHintText.Text = "资源文件定位未完成，请检查设置中的游戏目录。";
             return;
         }
 
+        ResourceLocateHintText.Text = "资源文件已成功自动定位（.bundle / sharedassets0.assets / resources.assets）。";
         ReloadBundleScan();
     }
 
@@ -765,7 +998,7 @@ public partial class BundleTexturePackageWindow : Window
     {
         if (candidates.Count == 0)
         {
-            MessageBox.Show("当前 SongDatabase 中没有可供照抄的已有曲目。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowPrompt("提示", "当前 SongDatabase 中没有可供照抄的已有曲目。");
             return null;
         }
 
@@ -827,15 +1060,15 @@ public partial class BundleTexturePackageWindow : Window
         if (_bundleScan == null)
             throw new Exception("请先扫描 .bundle 并选择槽位与曲绘模板。");
         if (string.IsNullOrWhiteSpace(_vm.SharedAssetsFilePath))
-            throw new Exception("请先导入 sharedassets0.assets。");
+            throw new Exception("未找到 sharedassets0.assets，请检查设置中的游戏目录。");
         if (string.IsNullOrWhiteSpace(_vm.ResourcesAssetsFilePath))
-            throw new Exception("请先定位 resources.assets。");
+            throw new Exception("未找到 resources.assets，请检查设置中的游戏目录。");
         if (string.IsNullOrWhiteSpace(_vm.JacketImageFilePath))
             throw new Exception("请先导入曲绘。");
         if (string.IsNullOrWhiteSpace(_vm.BgmFilePath))
             throw new Exception("请先导入 BGM。");
         if (string.IsNullOrWhiteSpace(_vm.OutputDirectory))
-            throw new Exception("请选择导出文件夹。");
+            throw new Exception("未配置输出目录，请先在设置中配置有效游戏目录。");
         if (_vm.SelectedSongSlot == null)
             throw new Exception("请选择一个槽位。"); // 允许任意槽位
         if (_vm.SelectedJacketTemplate == null)
@@ -843,18 +1076,20 @@ public partial class BundleTexturePackageWindow : Window
 
         var charts = BuildChartItemsFromRows();
         if (charts.Count > MaxChartRowCount)
-            throw new Exception($"启用的谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
+            throw new Exception($"谱面项数量超出限制，最多允许 {MaxChartRowCount} 个。");
         if (charts.Count == 0)
-            throw new Exception("请至少启用并配置一个谱面项。");
+            throw new Exception("请至少配置一个谱面项并选择谱面文件。");
 
         return new NewSongPackRequest
         {
             BundleFilePath = _vm.BundleFilePath,
             SharedAssetsFilePath = _vm.SharedAssetsFilePath,
             ResourcesAssetsFilePath = _vm.ResourcesAssetsFilePath,
-            OutputDirectory = !string.IsNullOrWhiteSpace(_vm.GameDirectory)
-                ? Path.Combine(_vm.GameDirectory, "SongData")
-                : _vm.OutputDirectory,
+            OutputDirectory = !string.IsNullOrWhiteSpace(_vm.OutputDirectory)
+                ? _vm.OutputDirectory
+                : (!string.IsNullOrWhiteSpace(_vm.GameDirectory)
+                    ? Path.Combine(_vm.GameDirectory, "SongData")
+                    : string.Empty),
             JacketImageFilePath = _vm.JacketImageFilePath,
             BgmFilePath = _vm.BgmFilePath,
             BaseName = (_vm.BaseName ?? "").Trim(),
@@ -880,7 +1115,10 @@ public partial class BundleTexturePackageWindow : Window
         var list = new List<NewSongChartPackItem>();
         foreach (var row in _vm.ChartRows)
         {
-            if (!row.Enabled) continue;
+            if (string.IsNullOrWhiteSpace(row.ChartFilePath)) continue;
+            if (!BundleTexturePackageChartRowViewModel.IsSupportedDifficultyFlag(row.DifficultyFlag))
+                throw new Exception($"谱面槽位 {row.ChartSlotIndex} 的 Difficulty 仅支持 1/2/4/8，当前为 {row.DifficultyFlag}。请先修正红框项。");
+
             list.Add(new NewSongChartPackItem
             {
                 ChartSlotIndex = row.ChartSlotIndex,
@@ -894,6 +1132,22 @@ public partial class BundleTexturePackageWindow : Window
             });
         }
         return list;
+    }
+
+    private static int TryReadPreferredSlotIndex(JsonElement songInfo)
+    {
+        if (songInfo.TryGetProperty("SelectedSlotIndex", out var slotIndexJson) && slotIndexJson.TryGetInt32(out int directSlot))
+            return directSlot;
+
+        if (songInfo.TryGetProperty("SelectedSlot", out var slotJson)
+            && slotJson.ValueKind == JsonValueKind.Object
+            && slotJson.TryGetProperty("SlotIndex", out var nestedSlot)
+            && nestedSlot.TryGetInt32(out int nestedSlotIndex))
+        {
+            return nestedSlotIndex;
+        }
+
+        return -1;
     }
 
     // 生成一条默认谱面配置行，尽量避开已用槽位并给出常用 Difficulty。
@@ -911,7 +1165,6 @@ public partial class BundleTexturePackageWindow : Window
 
         return new BundleTexturePackageChartRowViewModel
         {
-            Enabled = true,
             ChartSlotIndex = slot,
             DifficultyFlag = difficulty,
             Available = 1,
@@ -926,12 +1179,12 @@ public partial class BundleTexturePackageWindow : Window
     // 获取尚未被当前表格使用的第一个谱面槽位（0-3）。
     private int GetNextAvailableChartSlotIndex()
     {
-        var used = _vm.ChartRows.Select(x => x.ChartSlotIndex).ToHashSet();
-        for (int i = 0; i <= 3; i++)
-        {
-            if (!used.Contains(i)) return i;
-        }
-        return 0;
+        if (_vm.ChartRows.Count == 0)
+            return 0;
+
+        int maxUsed = _vm.ChartRows.Max(x => x.ChartSlotIndex);
+        int next = maxUsed + 1;
+        return next <= 3 ? next : 3;
     }
 
     // 构建适合 MessageBox 展示的异常摘要（类型 + 消息 + 第一层内部异常 + 首帧堆栈）。

@@ -1,0 +1,34 @@
+<UserControl x:Class="InFalsusSongPackStudio.Views.PreviewImportPage"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch">
+    <Grid Background="{DynamicResource AppSurfaceBrush}">
+        <Border HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MaxWidth="520"
+                Padding="24"
+                Background="{DynamicResource AppSurfaceAltBrush}"
+                BorderBrush="{DynamicResource AppBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+            <StackPanel>
+                <TextBlock Text="谱面预览"
+                           FontSize="26"
+                           FontWeight="SemiBold"/>
+                <TextBlock Margin="0,10,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                           Text="该页面仅用于导入 SPC 并进入预览。导入成功后会自动跳转到预览窗口，可继续导入 BGM。"/>
+                <Button Margin="0,18,0,0"
+                        Width="160"
+                        HorizontalAlignment="Left"
+                        Click="ImportSpc_Click">导入 SPC 文件</Button>
+                <TextBlock x:Name="StatusText"
+                           Margin="0,14,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource AppSubtleForegroundBrush}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

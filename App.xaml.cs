@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using InFalsusSongPackStudio.Utils;
 
 namespace InFalsusSongPackStudio
 {
@@ -18,6 +19,8 @@ namespace InFalsusSongPackStudio
         {
             // 统一记录软件运行期间的异常信息到 exe 同目录。
             HookGlobalExceptionLogging();
+            var settings = AppGlobalSettingsStore.Load();
+            AppThemeManager.ApplyTheme(settings.ThemeMode);
             base.OnStartup(e);
         }
 

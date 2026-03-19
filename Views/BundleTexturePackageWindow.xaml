@@ -6,15 +6,15 @@
     <Grid Margin="10">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="360"/>
+            <ColumnDefinition x:Name="RightPanelColumn" Width="320"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <ScrollViewer x:Name="MainScrollViewer" Grid.Row="0" Grid.Column="0" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
+        <ScrollViewer x:Name="MainScrollViewer" Grid.Row="0" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Width="{Binding ElementName=MainScrollViewer, Path=ViewportWidth}" MinWidth="0">
                 <GroupBox Header="资源文件" Margin="0,0,0,8">
                     <Grid Margin="10">
                         <Grid.RowDefinitions>
@@ -22,44 +22,35 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="120"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="Auto" MinWidth="120"/>
+                            <ColumnDefinition Width="*" MinWidth="260"/>
+                            <ColumnDefinition Width="Auto" MinWidth="110"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="游戏目录：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding GameDirectory}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="0" Grid.Column="2" Content="选择目录" Click="BtnBrowseGameDirectory_Click" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="ResourceLocateHintText"
+                                   Grid.Row="0"
+                                   Grid.Column="0"
+                                   Grid.ColumnSpan="3"
+                                   Margin="0,0,0,8"
+                                   Text="资源文件定位中..."
+                                   Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                                   TextWrapping="Wrap"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text=".bundle：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BundleFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="1" Grid.Column="2" Content="重新定位" Click="BtnBrowseGameDirectory_Click" Margin="0,0,0,6"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="导入曲绘：" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding JacketImageFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
+                        <Button Grid.Row="1" Grid.Column="2" Content="导入曲绘" Click="BtnBrowseJacket_Click" Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="sharedassets0.assets：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SharedAssetsFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="2" Grid.Column="2" Content="重新定位" Click="BtnBrowseGameDirectory_Click" Margin="0,0,0,6"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="导入 BGM：" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding BgmFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
+                        <Button Grid.Row="2" Grid.Column="2" Content="导入BGM" Click="BtnBrowseBgm_Click" Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="resources.assets：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding ResourcesAssetsFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="3" Grid.Column="2" Content="重新定位" Click="BtnBrowseGameDirectory_Click" Margin="0,0,0,6"/>
-
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="导入曲绘：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding JacketImageFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="4" Grid.Column="2" Content="导入曲绘" Click="BtnBrowseJacket_Click" Margin="0,0,0,6"/>
-
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="导入 BGM：" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                        <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding BgmFilePath}" IsReadOnly="True" Margin="0,0,8,6"/>
-                        <Button Grid.Row="5" Grid.Column="2" Content="导入BGM" Click="BtnBrowseBgm_Click" Margin="0,0,0,6"/>
-
-                        <TextBlock Grid.Row="6" Grid.Column="0" Text="输出目录(自动)：" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBox Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2"
-                                 Text="{Binding OutputDirectory}" IsReadOnly="True" Margin="0,0,0,0"
-                                 ToolTip="固定输出到游戏根目录下的 SongData 文件夹。"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="输出目录：" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox Grid.Row="3" Grid.Column="1"
+                                 Text="{Binding OutputDirectory}" Margin="0,0,8,0"
+                                 ToolTip="默认输出到游戏根目录下的 SongData 文件夹，也可手动调整。"/>
+                        <Button Grid.Row="3" Grid.Column="2" Content="选择目录" Click="BtnBrowseOutput_Click"/>
                     </Grid>
                 </GroupBox>
 
@@ -74,9 +65,9 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="120"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="Auto" MinWidth="120"/>
+                            <ColumnDefinition Width="*" MinWidth="260"/>
+                            <ColumnDefinition Width="Auto" MinWidth="160"/>
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="BaseName：" VerticalAlignment="Center" Margin="0,0,8,6"/>
@@ -128,8 +119,8 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="140"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto" MinWidth="140"/>
+                            <ColumnDefinition Width="*" MinWidth="260"/>
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="曲名(English)：" VerticalAlignment="Center" Margin="0,0,8,6"/>
@@ -149,41 +140,102 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="230"/>
-                            <ColumnDefinition Width="120"/>
-                            <ColumnDefinition Width="230"/>
-                            <ColumnDefinition Width="120"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto" MinWidth="220"/>
+                            <ColumnDefinition Width="Auto" MinWidth="190"/>
+                            <ColumnDefinition Width="*" MinWidth="0"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="DisplayNameSectionIndicator" VerticalAlignment="Center" Margin="0,0,8,6"
-                                   TextWrapping="Wrap"
+                        <TextBlock Grid.Row="0" Grid.Column="0"
+                                   Text="DisplayNameSectionIndicator"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"
+                                   TextWrapping="NoWrap"
                                    ToolTip="DisplayNameSectionIndicator：曲名排序/分组标记。"/>
-                        <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding DisplayNameSectionIndicator}" Margin="0,0,12,6"
-                                  ToolTip="曲名排序/分组标记，通常是首字母（如 A）。用于选歌列表按曲名分组显示。"/>
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="DisplayArtistSectionIndicator" VerticalAlignment="Center" Margin="0,0,8,6"
-                                   TextWrapping="Wrap"
+                        <TextBox Grid.Row="0" Grid.Column="1"
+                                 Text="{Binding DisplayNameSectionIndicator}"
+                                 Width="60"
+                                 MaxLength="1"
+                                 Margin="0,0,0,6"
+                                 HorizontalAlignment="Left"
+                                 ToolTip="曲名排序/分组标记，通常是首字母（如 A）。用于选歌列表按曲名分组显示。"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0"
+                                   Text="DisplayArtistSectionIndicator"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"
+                                   TextWrapping="NoWrap"
                                    ToolTip="DisplayArtistSectionIndicator：曲师排序/分组标记。"/>
-                        <TextBox Grid.Row="0" Grid.Column="3" Text="{Binding DisplayArtistSectionIndicator}" Margin="0,0,0,6"
-                                  ToolTip="曲师排序/分组标记，通常是首字母（如 A）。用于按曲师分组显示。"/>
-                        <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" MinWidth="132" Height="24" FontSize="11" HorizontalAlignment="Right"
-                                Margin="8,0,0,6"
-                                Content="照抄已有曲目设置" Click="BtnCopySongDisplaySettings_Click"
+                        <TextBox Grid.Row="1" Grid.Column="1"
+                                 Text="{Binding DisplayArtistSectionIndicator}"
+                                 Width="60"
+                                 MaxLength="1"
+                                 Margin="0,0,0,6"
+                                 HorizontalAlignment="Left"
+                                 ToolTip="曲师排序/分组标记，通常是首字母（如 A）。用于按曲师分组显示。"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0"
+                                   Text="GameplayBackground"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"
+                                   TextWrapping="NoWrap"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1"
+                                  Margin="0,0,0,6"
+                                  Width="180"
+                                  HorizontalAlignment="Left"
+                                  SelectedValue="{Binding GameplayBackground}"
+                                  SelectedValuePath="Tag"
+                                  ToolTip="游玩界面背景主题枚举。将写入 SongInfo.GameplayBackground。">
+                            <ComboBoxItem Tag="0" Content="Mindscape1Dark (0)"/>
+                            <ComboBoxItem Tag="1" Content="Mindscape1Light (1)"/>
+                            <ComboBoxItem Tag="2" Content="Mindscape2Dark (2)"/>
+                            <ComboBoxItem Tag="3" Content="Mindscape2Light (3)"/>
+                            <ComboBoxItem Tag="4" Content="Mindscape3Dusk (4)"/>
+                            <ComboBoxItem Tag="5" Content="Mindscape3Light (5)"/>
+                            <ComboBoxItem Tag="6" Content="Mindscape4 (6)"/>
+                            <ComboBoxItem Tag="7" Content="Mindscape5Red (7)"/>
+                            <ComboBoxItem Tag="8" Content="Mindscape5Generic (8)"/>
+                            <ComboBoxItem Tag="9" Content="Albedo (9)"/>
+                            <ComboBoxItem Tag="10" Content="MechanicalAbstract (10)"/>
+                            <ComboBoxItem Tag="11" Content="GrandMechanical (11)"/>
+                            <ComboBoxItem Tag="12" Content="Cryogenic (12)"/>
+                            <ComboBoxItem Tag="13" Content="Ordirehv (13)"/>
+                        </ComboBox>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0"
+                                   Text="RewardStyle"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"
+                                   TextWrapping="NoWrap"/>
+                        <ComboBox Grid.Row="3" Grid.Column="1"
+                                  Margin="0,0,0,6"
+                                  Width="180"
+                                  HorizontalAlignment="Left"
+                                  SelectedValue="{Binding RewardStyle}"
+                                  SelectedValuePath="Tag"
+                                  ToolTip="结算/奖励样式枚举。将写入 SongInfo.RewardStyle。">
+                            <ComboBoxItem Tag="0" Content="Supress (0)"/>
+                            <ComboBoxItem Tag="1" Content="Banner (1)"/>
+                            <ComboBoxItem Tag="2" Content="Message (2)"/>
+                        </ComboBox>
+
+                        <Button Grid.Row="4" Grid.Column="1"
+                            Width="180"
+                                Height="24"
+                                FontSize="10.5"
+                                Padding="8,2"
+                                HorizontalAlignment="Left"
+                                Margin="0,0,0,6"
+                            Content="照抄曲绘模板对应曲目的设置"
+                                Click="BtnCopySongDisplaySettings_Click"
                                 ToolTip="默认尝试从当前曲绘模板同名曲目照抄这四个字段；若找不到，会让你手动选择一首已有曲目。"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="GameplayBackground" VerticalAlignment="Center" Margin="0,0,8,6"
-                                   TextWrapping="Wrap"/>
-                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding GameplayBackground}" Margin="0,0,12,6"
-                                  ToolTip="游玩界面背景主题的枚举/ID，不同值会对应不同背景风格。"/>
-                        <TextBlock Grid.Row="1" Grid.Column="2" Text="RewardStyle" VerticalAlignment="Center" Margin="0,0,8,6"
-                                   TextWrapping="Wrap"/>
-                        <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding RewardStyle}" Margin="0,0,0,6"
-                                  ToolTip="结算/奖励样式的枚举/ID，通常 0 为默认样式。"/>
-
-                        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5"
-                                   Foreground="#777777" FontSize="11"
+                        <TextBlock Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3"
+                                   Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                                   FontSize="11"
                                    Text="提示：ChartInfo.Id 将自动生成为 BaseName + 槽位索引（0~3）；映射路径会自动添加 BGM 与各谱面条目。"/>
                     </Grid>
                 </GroupBox>
@@ -200,21 +252,74 @@
                                   AutoGenerateColumns="False"
                                   CanUserAddRows="False"
                                   CanUserDeleteRows="False"
+                                  RowHeight="26"
+                                  ColumnHeaderHeight="30"
+                                  Loaded="ChartRowsGrid_Loaded"
                                   HeadersVisibility="Column"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   PreviewMouseWheel="ChartRowsGrid_PreviewMouseWheel"
                                   ItemsSource="{Binding ChartRows}"
                                   SelectedItem="{Binding SelectedChartRow}"
-                                  MinHeight="210">
+                                  MinHeight="56">
                             <DataGrid.Columns>
-                                <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="55"/>
-                                <DataGridTextColumn Header="槽位(0-3)" Binding="{Binding ChartSlotIndex}" Width="70"/>
-                                <DataGridTextColumn Header="Difficulty" Binding="{Binding DifficultyFlag}" Width="70"/>
-                                <DataGridTextColumn Header="Available" Binding="{Binding Available}" Width="70"/>
-                                <DataGridTextColumn Header="Rating" Binding="{Binding Rating}" Width="65"/>
-                                <DataGridTextColumn Header="Level" Binding="{Binding LevelSectionIndicator}" Width="80"/>
-                                <DataGridTextColumn Header="谱师" Binding="{Binding DisplayChartDesigner}" Width="120"/>
-                                <DataGridTextColumn Header="画师" Binding="{Binding DisplayJacketDesigner}" Width="120"/>
-                                <DataGridTextColumn Header="谱面文件" Binding="{Binding ChartFilePath}" Width="*"/>
+                                <DataGridCheckBoxColumn Binding="{Binding IsAvailable}" Width="44">
+                                    <DataGridCheckBoxColumn.Header>
+                                        <TextBlock Text="可用" ToolTip="Available"/>
+                                    </DataGridCheckBoxColumn.Header>
+                                </DataGridCheckBoxColumn>
+                                <DataGridTextColumn Binding="{Binding ChartSlotIndex}" Width="45" IsReadOnly="True">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="槽位" ToolTip="ChartSlotIndex"/>
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Width="52">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="难度" ToolTip="DifficultyFlag"/>
+                                    </DataGridTextColumn.Header>
+                                    <DataGridTextColumn.Binding>
+                                        <Binding Path="DifficultyFlag"
+                                                 UpdateSourceTrigger="PropertyChanged"
+                                                 ValidatesOnDataErrors="True"
+                                                 NotifyOnValidationError="True"/>
+                                    </DataGridTextColumn.Binding>
+                                    <DataGridTextColumn.EditingElementStyle>
+                                        <Style TargetType="TextBox">
+                                            <Style.Triggers>
+                                                <Trigger Property="Validation.HasError" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#D9534F"/>
+                                                    <Setter Property="BorderThickness" Value="2"/>
+                                                    <Setter Property="ToolTip"
+                                                            Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGridTextColumn.EditingElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Binding="{Binding DisplayChartDesigner}" Width="78">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="谱师" ToolTip="DisplayChartDesigner"/>
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Binding="{Binding DisplayJacketDesigner}" Width="78">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="画师" ToolTip="DisplayJacketDesigner"/>
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Binding="{Binding Rating}" Width="45">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="定数" ToolTip="Rating"/>
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Binding="{Binding LevelSectionIndicator}" Width="45">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="等级" ToolTip="LevelSectionIndicator"/>
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Binding="{Binding ChartFilePath}" Width="120">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="谱面文件" ToolTip="ChartFilePath"/>
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </DockPanel>
@@ -223,42 +328,50 @@
             </StackPanel>
         </ScrollViewer>
 
+        <Button x:Name="BtnToggleRightPanel"
+                Grid.Row="0"
+                Grid.Column="1"
+            Width="32"
+            Height="32"
+            Padding="0"
+            FontSize="15"
+            FontWeight="SemiBold"
+            Margin="0,6,8,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+            Panel.ZIndex="30"
+            Background="{DynamicResource AppSurfaceBrush}"
+            BorderBrush="{DynamicResource AppBorderBrush}"
+            ToolTip="收起右侧栏"
+            Click="ToggleRightPanel_Click">☰</Button>
+
         <Grid Grid.Row="1" Grid.Column="0" Margin="0,8,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <CheckBox Grid.Column="0" VerticalAlignment="Center"
-                      Content="文件被占用时自动另存为 xxx (1).bundle/.assets"
-                      IsChecked="{Binding AutoRenameWhenTargetLocked}"/>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Width="110" Margin="0,0,8,0" Click="BtnImportPackage_Click">导入曲包</Button>
-                <Button Width="110" Margin="0,0,8,0" Click="BtnExportPackage_Click">导出曲包</Button>
-                <Button Width="110" Margin="0,0,8,0" Click="BtnExport_Click">导出</Button>
-                <Button Width="110" IsCancel="True">关闭</Button>
+                <Button Width="110" Margin="0,0,8,0" Click="BtnExportPackage_Click">导出为曲包</Button>
+                <Button Width="110" Margin="0,0,8,0" Click="BtnExport_Click">直接导出</Button>
+                <Button Width="110" Click="BtnReset_Click">重置</Button>
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" Margin="8,0,0,0">
+        <Grid x:Name="RightPanel" Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" Margin="8,0,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <GroupBox Grid.Row="0" Header="操作步骤" Margin="0,0,0,8">
-                <Border BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8" Background="#FAFAFA" Margin="10">
+                <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="8" Background="{DynamicResource AppSurfaceBrush}" Margin="10">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Height="260">
-                        <TextBlock Text="{Binding OperationGuide}" TextWrapping="Wrap" Foreground="#555555"/>
+                        <TextBlock Text="{Binding OperationGuide}" TextWrapping="Wrap" Foreground="{DynamicResource AppSubtleForegroundBrush}"/>
                     </ScrollViewer>
                 </Border>
             </GroupBox>
 
             <GroupBox Grid.Row="1" Header="状态">
-                <Border BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8" Background="#FAFAFA" Margin="10">
+                <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="8" Background="{DynamicResource AppSurfaceBrush}" Margin="10">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#555555"/>
+                        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource AppSubtleForegroundBrush}"/>
                     </ScrollViewer>
                 </Border>
             </GroupBox>

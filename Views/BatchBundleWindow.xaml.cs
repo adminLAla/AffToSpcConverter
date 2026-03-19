@@ -26,16 +26,18 @@ using System.Threading;
 
 namespace InFalsusSongPackStudio.Views
 {
-    /// <summary>
-    /// BatchBundleWindow.xaml 的交互逻辑
-    /// </summary>
-    /// 
-
     // 批量打包窗口视图模型，维护路径、曲包列表和状态日志。
     public class BatchBundleViewModel : INotifyPropertyChanged
     {
         public ObservableCollection<SongPackInfo> SongPacks { get; } = new();
         public ObservableCollection<string> Status { get; } = new();
+
+        private string _operationGuide = string.Empty;
+        public string OperationGuide
+        {
+            get => _operationGuide;
+            set { _operationGuide = value; OnPropertyChanged(nameof(OperationGuide)); }
+        }
 
         private string _gameDirectory = "";
         public string GameDirectory
@@ -88,6 +90,7 @@ namespace InFalsusSongPackStudio.Views
     // 批量导入导出曲包窗口。
     public partial class BatchBundleWindow : Window
     {
+        private bool _hasBatchExportCompleted;
 
         public string GameDirectory { get; set; } = "";
         public string DataDir { get; set; } = "";
@@ -101,10 +104,12 @@ namespace InFalsusSongPackStudio.Views
         {
             InitializeComponent();
             DataContext = new BatchBundleViewModel();
+            ApplySavedGameDirectory();
+            UpdateOperationGuide();
         }
 
-        // 扫描目录中的 ZIP，识别可导出曲包并填充列表。
-        private void BtnBatchImport_Click(object sender, RoutedEventArgs e)
+        // 导入方式 1：选择文件夹并扫描其中的 ZIP。
+        private void BtnBatchImportFolder_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new OpenFolderDialog
             {
@@ -112,6 +117,48 @@ namespace InFalsusSongPackStudio.Views
             };
             if (dialog.ShowDialog() != true) return;
 
+            var zipPaths = Directory
+                .EnumerateFiles(dialog.FolderName, "*.zip", SearchOption.TopDirectoryOnly)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (zipPaths.Count == 0)
+            {
+                MessageBox.Show("所选文件夹内未找到 .zip 文件。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            ImportZipPaths(zipPaths);
+        }
+
+        // 导入方式 2：手动多选 ZIP 文件。
+        private void BtnBatchImportZipFiles_Click(object sender, RoutedEventArgs e)
+        {
+            var fileDialog = new OpenFileDialog
+            {
+                Title = "选择一个或多个曲包 ZIP",
+                Filter = "ZIP 文件 (*.zip)|*.zip",
+                Multiselect = true,
+                CheckFileExists = true
+            };
+
+            if (fileDialog.ShowDialog() != true)
+                return;
+
+            var zipPaths = fileDialog.FileNames
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (zipPaths.Count == 0)
+                return;
+
+            ImportZipPaths(zipPaths);
+        }
+
+        private void ImportZipPaths(IReadOnlyList<string> zipPaths)
+        {
             var vm = DataContext as BatchBundleViewModel;
             if (vm == null)
             {
@@ -119,6 +166,7 @@ namespace InFalsusSongPackStudio.Views
                 return;
             }
 
+            _hasBatchExportCompleted = false;
             vm.SongPacks.Clear();
             vm.Status.Clear();
 
@@ -126,7 +174,7 @@ namespace InFalsusSongPackStudio.Views
             int skippedNoSongJson = 0;
             int parseFailed = 0;
 
-            foreach (var zipPath in Directory.EnumerateFiles(dialog.FolderName, "*.zip", SearchOption.TopDirectoryOnly))
+            foreach (var zipPath in zipPaths)
             {
                 try
                 {
@@ -162,6 +210,8 @@ namespace InFalsusSongPackStudio.Views
             vm.Status.Add($"导入完成：成功 {packList.Count} 个，跳过 {skippedNoSongJson} 个，失败 {parseFailed} 个。");
             if (packList.Count == 0)
                 vm.Status.Add("提示：当前目录下未识别到可导出的曲包。请确认 ZIP 内含 song.json。");
+
+            UpdateOperationGuide();
         }
 
         // 执行批量导出：扫描空槽、自动分配槽位并输出详细状态。
@@ -184,7 +234,7 @@ namespace InFalsusSongPackStudio.Views
                 string.IsNullOrWhiteSpace(resourcesAssetsFilePath) ||
                 string.IsNullOrWhiteSpace(bundleFilePath))
             {
-                MessageBox.Show("请先选择有效的游戏目录并完成资源路径定位。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("请先在设置中配置有效的游戏目录，并确保资源路径自动定位成功。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -195,6 +245,7 @@ namespace InFalsusSongPackStudio.Views
             }
 
             vm.Status.Clear();
+            UpdateOperationGuide();
 
 
             await Task.Run(() =>
@@ -276,7 +327,11 @@ namespace InFalsusSongPackStudio.Views
                 Dispatcher.Invoke(() => vm.Status.Add($"批量导出完成：成功 {successCount} 首，失败 {failCount} 首。"));
             });
 
-            MessageBox.Show("批量导出完成。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            _hasBatchExportCompleted = true;
+
+            UpdateOperationGuide();
+
+            AppPromptDialog.Show(this, "提示", "批量导出完成。\n可在下方“状态”区域查看逐首结果。");
         }
 
         // 在 ZIP 中查找 song.json（支持大小写和子目录）。
@@ -311,10 +366,13 @@ namespace InFalsusSongPackStudio.Views
         // 读取曲包请求槽位；无请求时返回 -1。
         private static int TryReadPreferredSlotIndex(JsonElement songInfo)
         {
+            if (songInfo.TryGetProperty("SelectedSlotIndex", out var slotIndexJson) && slotIndexJson.TryGetInt32(out int directSlot))
+                return directSlot;
+
             if (songInfo.TryGetProperty("SelectedSlot", out var slotJson) && slotJson.ValueKind == JsonValueKind.Object)
             {
-                if (slotJson.TryGetProperty("SlotIndex", out var slotIndexJson))
-                    return slotIndexJson.GetInt32();
+                if (slotJson.TryGetProperty("SlotIndex", out var nestedSlotIndexJson) && nestedSlotIndexJson.TryGetInt32(out int nestedSlot))
+                    return nestedSlot;
             }
             return -1;
         }
@@ -481,13 +539,29 @@ namespace InFalsusSongPackStudio.Views
             return $"{ex.GetType().Name}: {ex.Message} | Inner={ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
         }
 
-        // 选择游戏目录并刷新关键资源路径。
-        private void BtnBrowseGameDirectory_Click(object sender, RoutedEventArgs e)
+        private void ApplySavedGameDirectory()
         {
-            var dialog = new OpenFolderDialog();
-            if (dialog.ShowDialog() != true) return;
-            ApplyGameDirectory(dialog.FolderName);
+            string gameDirectory = AppGlobalSettingsStore.LoadGameDirectory();
+            var vm = DataContext as BatchBundleViewModel;
+            if (vm == null) return;
+
+            if (string.IsNullOrWhiteSpace(gameDirectory))
+            {
+                _hasBatchExportCompleted = false;
+                vm.GameDirectory = string.Empty;
+                vm.SharedAssetsFilePath = string.Empty;
+                vm.ResourcesAssetsFilePath = string.Empty;
+                vm.BundleFilePath = string.Empty;
+                vm.Status.Clear();
+                vm.Status.Add("未配置全局游戏目录，请先到设置中选择游戏根目录。" );
+                ResourceLocateHintText.Text = "资源文件尚未定位，请先在设置中配置有效游戏目录。";
+                UpdateOperationGuide();
+                return;
+            }
+
+            ApplyGameDirectory(gameDirectory);
         }
+
         // 根据游戏根目录推导 bundle/assets 路径。
         private void ApplyGameDirectory(string gameDirectory)
         {
@@ -495,10 +569,12 @@ namespace InFalsusSongPackStudio.Views
                 return;
             var vm = DataContext as BatchBundleViewModel;
             if (vm == null) return;
+            _hasBatchExportCompleted = false;
             GameDirectory = Path.GetFullPath(gameDirectory);
             DataDir = Path.Combine(GameDirectory, "if-app_Data");
             if (!Directory.Exists(DataDir))
             {
+                ResourceLocateHintText.Text = "资源文件尚未定位：未找到 if-app_Data，请在设置中选择正确游戏目录。";
                 MessageBox.Show("未在该目录下找到 if-app_Data。\n请选择游戏根目录（例如 In Falsus Demo）。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
@@ -518,6 +594,69 @@ namespace InFalsusSongPackStudio.Views
             vm.SharedAssetsFilePath = SharedAssetsFilePath;
             vm.ResourcesAssetsFilePath = ResourcesAssetsFilePath;
             vm.BundleFilePath = BundleFilePath;
+
+            if (notes.Count > 0)
+            {
+                ResourceLocateHintText.Text = "资源文件定位未完成，请检查设置中的游戏目录。";
+                UpdateOperationGuide();
+                return;
+            }
+
+            ResourceLocateHintText.Text = "资源文件已成功自动定位（.bundle / sharedassets0.assets / resources.assets）。";
+            UpdateOperationGuide();
+        }
+
+        // 供主壳窗口在“设置已应用”后主动刷新。
+        public void RefreshFromGlobalSettings()
+        {
+            ApplySavedGameDirectory();
+        }
+
+        private void UpdateOperationGuide()
+        {
+            var vm = DataContext as BatchBundleViewModel;
+            if (vm == null) return;
+
+            bool hasGameDirectory = !string.IsNullOrWhiteSpace(vm.GameDirectory);
+            bool hasResources =
+                !string.IsNullOrWhiteSpace(vm.SharedAssetsFilePath) &&
+                !string.IsNullOrWhiteSpace(vm.ResourcesAssetsFilePath) &&
+                !string.IsNullOrWhiteSpace(vm.BundleFilePath) &&
+                File.Exists(vm.SharedAssetsFilePath) &&
+                File.Exists(vm.ResourcesAssetsFilePath) &&
+                File.Exists(vm.BundleFilePath);
+            bool hasImportedPacks = vm.SongPacks.Count > 0;
+            bool hasBatchExportCompleted = _hasBatchExportCompleted;
+
+            var steps = new List<(bool done, string text)>
+            {
+                (hasGameDirectory, "在设置中配置游戏目录（In Falsus Demo）"),
+                (hasResources, "确认 .bundle / sharedassets0.assets / resources.assets 已自动定位"),
+                (hasImportedPacks, "点击“导入文件夹”或“导入ZIP文件”，并确认列表里有可处理曲包"),
+                (hasBatchExportCompleted, "点击“批量导出”开始写入游戏目录")
+            };
+
+            string? nextStep = steps.FirstOrDefault(x => !x.done).text;
+            if (string.IsNullOrWhiteSpace(nextStep))
+                nextStep = "步骤已完成，可执行批量导出。";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("请按顺序完成以下操作：");
+            for (int i = 0; i < steps.Count; i++)
+            {
+                string mark = steps[i].done ? "✅" : "⬜";
+                sb.AppendLine($"{mark} {i + 1}. {steps[i].text}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("说明：");
+            sb.AppendLine("- “导入文件夹”会扫描所选目录下所有 ZIP；“导入ZIP文件”支持手动多选。");
+            sb.AppendLine("- 批量导出会优先使用曲包请求槽位，不可用时自动分配空槽。");
+            sb.AppendLine("- 单曲调试推荐先到“打包谱面”，确认无误后再用本页批量写入。");
+            sb.AppendLine();
+            sb.AppendLine($"下一步：{nextStep}");
+
+            vm.OperationGuide = sb.ToString().TrimEnd();
         }
         // 解析目标歌曲数据库 bundle：优先默认文件名，失败时回退到目录扫描。
         private static string? ResolveTargetSongBundlePath(string bundleDir, string defaultBundlePath)
