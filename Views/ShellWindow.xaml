@@ -360,9 +360,10 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Text="恢复写入文件" FontSize="22" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="0" Text="恢复写入文件" FontSize="23" FontWeight="SemiBold"/>
                             <TextBlock Grid.Row="1"
                                        x:Name="RestorePromptText"
+                                       FontSize="13"
                                        Margin="0,8,0,0"
                                        TextWrapping="Wrap"
                                        Foreground="{DynamicResource AppSubtleForegroundBrush}"/>
@@ -376,14 +377,16 @@
                                     CornerRadius="6">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <TextBlock x:Name="RestoreResultText"
+                                               FontSize="13"
+                                               FontFamily="Consolas"
                                                TextWrapping="Wrap"
                                                Visibility="Collapsed"/>
                                 </ScrollViewer>
                             </Border>
 
                             <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                                <Button x:Name="BtnRestoreCancel" Style="{StaticResource SubtleHoverButtonStyle}" Width="96" Margin="0,0,8,0" Click="RestoreCancel_Click">取消</Button>
-                                <Button x:Name="BtnRestoreConfirm" Style="{StaticResource SubtleHoverButtonStyle}" Width="112" Click="RestoreConfirm_Click">确认恢复</Button>
+                                <Button x:Name="BtnRestoreCancel" Style="{StaticResource SubtleHoverButtonStyle}" Width="96" Margin="0,0,8,0" FontSize="13" Click="RestoreCancel_Click">取消</Button>
+                                <Button x:Name="BtnRestoreConfirm" Style="{StaticResource SubtleHoverButtonStyle}" Width="112" FontSize="13" Click="RestoreConfirm_Click">确认恢复</Button>
                             </StackPanel>
                         </Grid>
                     </Border>

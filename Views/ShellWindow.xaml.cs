@@ -191,7 +191,7 @@ public partial class ShellWindow : Window
         EmbeddedSectionHost created = section switch
         {
             ShellSection.Bundle => CreateEmbeddedFromWindow(new BundleTexturePackageWindow { Owner = this }),
-            ShellSection.Batch => CreateEmbeddedFromWindow(new BatchBundleWindow { Owner = this }),
+            ShellSection.Batch => CreateEmbeddedBatchHost(),
             ShellSection.AffConverter => GetOrCreateConverterHost(),
             ShellSection.Preview => CreatePreviewImportHost(),
             ShellSection.Settings => CreateEmbeddedSettingsHost(),
@@ -230,6 +230,20 @@ public partial class ShellWindow : Window
             WindowHost = null,
             Content = page
         };
+    }
+
+    private EmbeddedSectionHost CreateEmbeddedBatchHost()
+    {
+        var window = new BatchBundleWindow { Owner = this };
+        window.BatchExportCompleted += (_, _) =>
+        {
+            if (_embeddedHosts.TryGetValue(ShellSection.Bundle, out var bundleHost) && bundleHost.WindowHost is BundleTexturePackageWindow bundleWindow)
+            {
+                bundleWindow.RefreshFromGlobalSettings();
+            }
+        };
+
+        return CreateEmbeddedFromWindow(window);
     }
 
     private ConverterPage GetOrCreateConverterPage()
@@ -386,6 +400,16 @@ public partial class ShellWindow : Window
             string summary = await Task.Run(() => UnitySongResourcePacker.RestoreDeployedSongFiles(_pendingRestoreGameDirectory));
             RestoreResultText.Text = summary;
             RestoreResultText.Visibility = Visibility.Visible;
+
+            if (_embeddedHosts.TryGetValue(ShellSection.Bundle, out var bundleHost) && bundleHost.WindowHost is BundleTexturePackageWindow bundleWindow)
+            {
+                bundleWindow.RefreshFromGlobalSettings();
+            }
+
+            if (_embeddedHosts.TryGetValue(ShellSection.Batch, out var batchHost) && batchHost.WindowHost is BatchBundleWindow batchWindow)
+            {
+                batchWindow.RefreshFromGlobalSettings();
+            }
         }
         catch (Exception ex)
         {

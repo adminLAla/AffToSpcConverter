@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using InFalsusSongPackStudio.Utils;
 using InFalsusSongPackStudio.ViewModels;
 using Microsoft.Win32;
@@ -341,7 +342,21 @@ public partial class BundleTexturePackageWindow : Window
         ChartRowsGrid.SelectedItem = row;
         FocusChartGridFirstColumn(row);
 
-        _vm.Status = "已重置当前歌曲表单，可继续导入下一首。";
+        // 重置后强制重扫资源，确保批量导出/恢复后的槽位占用状态能立即反映到下拉框。
+        ReloadBundleScan();
+
+        // 重置后优先选择最前面的空槽，便于连续导入下一首。
+        _vm.SelectedSongSlot = _vm.EmptySongSlots.FirstOrDefault(x => x.IsEmpty)
+            ?? _vm.EmptySongSlots.FirstOrDefault();
+
+        // 部分控件更新会在布局阶段改变滚动位置；这里在空闲优先级再次滚到顶部。
+        MainScrollViewer?.ScrollToTop();
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            MainScrollViewer?.ScrollToTop();
+        }));
+
+        _vm.Status = "已重置当前歌曲表单并刷新资源状态，可继续导入下一首。";
         UpdateOperationGuide();
     }
 

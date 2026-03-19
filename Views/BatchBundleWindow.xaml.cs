@@ -23,6 +23,9 @@ using Microsoft.VisualBasic.ApplicationServices;
 using static System.Windows.Forms.AxHost;
 using System.Collections.Specialized;
 using System.Threading;
+using System.Diagnostics;
+using System.Runtime;
+using System.Runtime.InteropServices;
 
 namespace InFalsusSongPackStudio.Views
 {
@@ -91,6 +94,7 @@ namespace InFalsusSongPackStudio.Views
     public partial class BatchBundleWindow : Window
     {
         private bool _hasBatchExportCompleted;
+        public event EventHandler? BatchExportCompleted;
 
         public string GameDirectory { get; set; } = "";
         public string DataDir { get; set; } = "";
@@ -327,7 +331,9 @@ namespace InFalsusSongPackStudio.Views
                 Dispatcher.Invoke(() => vm.Status.Add($"批量导出完成：成功 {successCount} 首，失败 {failCount} 首。"));
             });
 
+            TryTrimManagedMemoryAfterBatchExport();
             _hasBatchExportCompleted = true;
+            BatchExportCompleted?.Invoke(this, EventArgs.Empty);
 
             UpdateOperationGuide();
 
@@ -669,5 +675,27 @@ namespace InFalsusSongPackStudio.Views
             .OrderBy(x => Path.GetFileName(x), StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
         }
+
+        // 批量导出会产生较多大对象；完成后主动压缩 LOH 并尝试回收工作集，降低常驻内存。
+        private static void TryTrimManagedMemoryAfterBatchExport()
+        {
+            try
+            {
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                GC.WaitForPendingFinalizers();
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+                using var process = Process.GetCurrentProcess();
+                _ = EmptyWorkingSet(process.Handle);
+            }
+            catch
+            {
+            }
+        }
+
+        [DllImport("psapi.dll")]
+        private static extern bool EmptyWorkingSet(IntPtr hProcess);
     }
 }
