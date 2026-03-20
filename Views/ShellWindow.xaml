@@ -355,6 +355,7 @@
                     <Button x:Name="BtnNavConverterGroup" Style="{StaticResource NavButtonStyle}" Click="ToggleConverterSubmenu_Click" Tag="谱面转换">谱面转换</Button>
                     <StackPanel x:Name="ConverterSubmenuPanel" Margin="18,0,0,4">
                         <Button x:Name="BtnNavAffConverter" Style="{StaticResource NavButtonStyle}" Height="34" FontSize="12" Click="NavAffConverter_Click" Tag="AFF → SPC转换">AFF → SPC转换</Button>
+                        <Button x:Name="BtnNavOsuConverter" Style="{StaticResource NavButtonStyle}" Height="34" FontSize="12" Click="NavOsuConverter_Click" Tag="OSU → SPC转换">OSU → SPC转换</Button>
                     </StackPanel>
                     <Button x:Name="BtnNavPreview" Style="{StaticResource NavButtonStyle}" Click="NavPreview_Click" Tag="谱面预览">谱面预览</Button>
                     <Button x:Name="BtnNavSettings" Style="{StaticResource NavButtonStyle}" Click="NavSettings_Click" Tag="设置" Margin="0,10,0,4">设置</Button>
@@ -452,11 +453,12 @@
                                 BorderThickness="1"
                                 CornerRadius="8"
                                 Padding="16">
-                            <UniformGrid Columns="2" Rows="2" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                            <UniformGrid Columns="2" Rows="3" Margin="0" HorizontalAlignment="Stretch" VerticalAlignment="Top">
                                 <Button Style="{StaticResource HomeActionButtonStyle}" Margin="0,0,8,8" Height="52" Padding="16,10" FontSize="16" FontWeight="SemiBold" BorderThickness="1.4" HorizontalContentAlignment="Left" Click="NavBundle_Click">打包谱面</Button>
                                 <Button Style="{StaticResource HomeActionButtonStyle}" Margin="8,0,0,8" Height="52" Padding="16,10" FontSize="16" FontWeight="SemiBold" BorderThickness="1.4" HorizontalContentAlignment="Left" Click="NavBatch_Click">批量打包</Button>
                                 <Button Style="{StaticResource HomeActionButtonStyle}" Margin="0,8,8,0" Height="52" Padding="16,10" FontSize="16" FontWeight="SemiBold" BorderThickness="1.4" HorizontalContentAlignment="Left" Click="NavAffConverter_Click">AFF → SPC转换</Button>
-                                <Button Style="{StaticResource HomeActionButtonStyle}" Margin="8,8,0,0" Height="52" Padding="16,10" FontSize="16" FontWeight="SemiBold" BorderThickness="1.4" HorizontalContentAlignment="Left" Click="NavPreview_Click">谱面预览</Button>
+                                <Button Style="{StaticResource HomeActionButtonStyle}" Margin="8,8,0,0" Height="52" Padding="16,10" FontSize="16" FontWeight="SemiBold" BorderThickness="1.4" HorizontalContentAlignment="Left" Click="NavOsuConverter_Click">OSU → SPC转换</Button>
+                                <Button Style="{StaticResource HomeActionButtonStyle}" Margin="0,8,8,0" Height="52" Padding="16,10" FontSize="16" FontWeight="SemiBold" BorderThickness="1.4" HorizontalContentAlignment="Left" Click="NavPreview_Click">谱面预览</Button>
                             </UniformGrid>
                         </Border>
 

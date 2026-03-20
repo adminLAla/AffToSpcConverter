@@ -27,6 +27,14 @@ public partial class ConverterPage : UserControl
 {
     private readonly MainViewModel _vm = new();
 
+    private enum InputChartMode
+    {
+        Aff,
+        Osu
+    }
+
+    private InputChartMode _inputChartMode = InputChartMode.Aff;
+
     // ===== 音频播放（NAudio）=====
     private IWavePlayer? _waveOut;
     private WaveStream? _audioOutputStream;
@@ -85,8 +93,29 @@ public partial class ConverterPage : UserControl
         UpdateTextBoxLineNumbers(SpcOutputTextBox, SpcOutputLineNumbersTextBox, ref _spcLineNumberRenderedCount);
         RefreshPreviewEditButtonStates();
         ApplyPreviewViewModeButtonState();
-        _vm.Status = "请打开 .aff 或 .spc 开始。";
+        ApplyInputChartModeUi();
         Unloaded += ConverterPage_Unloaded;
+    }
+
+    private void SetInputChartMode(InputChartMode mode)
+    {
+        if (_inputChartMode == mode)
+            return;
+
+        _inputChartMode = mode;
+        ApplyInputChartModeUi();
+    }
+
+    private void ApplyInputChartModeUi()
+    {
+        if (BtnOpenInputChart == null || InputPanelHeaderText == null)
+            return;
+
+        bool isOsu = _inputChartMode == InputChartMode.Osu;
+        BtnOpenInputChart.Content = isOsu ? "打开 .osu" : "打开 .aff";
+        BtnOpenInputChart.ToolTip = isOsu ? "打开 .osu" : "打开 .aff";
+        InputPanelHeaderText.Text = isOsu ? "输入 (.osu)" : "输入 (.aff)";
+        _vm.Status = isOsu ? "请打开 .osu 或 .spc 开始。" : "请打开 .aff 或 .spc 开始。";
     }
 
     // 根据当前选中状态与撤回/恢复历史更新顶部编辑按钮可用性。
@@ -247,19 +276,23 @@ public partial class ConverterPage : UserControl
 
     // ===== 文件操作 =====
 
-    // 打开并读取 AFF 文件内容到预览区。
+    // 打开输入谱面（AFF/OSU）并读取到输入文本区。
     private void BtnOpenAff_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
         {
-            Filter = "Arcaea 谱面 (*.aff)|*.aff|所有文件 (*.*)|*.*",
-            Title = "打开 .aff"
+            Filter = _inputChartMode == InputChartMode.Osu
+                ? "osu! 谱面 (*.osu)|*.osu|所有文件 (*.*)|*.*"
+                : "Arcaea 谱面 (*.aff)|*.aff|所有文件 (*.*)|*.*",
+            Title = _inputChartMode == InputChartMode.Osu ? "打开 .osu" : "打开 .aff"
         };
         if (dlg.ShowDialog() != true) return;
 
         _vm.LoadedAffPath = dlg.FileName;
         _vm.AffPreview = File.ReadAllText(dlg.FileName, Encoding.UTF8);
-        _vm.Status = $"已加载：{Path.GetFileName(dlg.FileName)}";
+        _vm.Status = _inputChartMode == InputChartMode.Osu
+            ? $"已加载 OSU：{Path.GetFileName(dlg.FileName)}"
+            : $"已加载 AFF：{Path.GetFileName(dlg.FileName)}";
     }
 
     // 打开并解析 SPC 文件，同时刷新预览事件列表。
@@ -324,13 +357,24 @@ public partial class ConverterPage : UserControl
     {
         if (string.IsNullOrWhiteSpace(_vm.LoadedAffPath) || !File.Exists(_vm.LoadedAffPath))
         {
-            MessageBox.Show("请先打开一个 .aff 文件。");
+            MessageBox.Show(_inputChartMode == InputChartMode.Osu ? "请先打开一个 .osu 文件。" : "请先打开一个 .aff 文件。");
             return;
         }
 
+        if (_inputChartMode == InputChartMode.Osu)
+        {
+            ConvertFromOsu();
+            return;
+        }
+
+        ConvertFromAff();
+    }
+
+    private void ConvertFromAff()
+    {
         try
         {
-            var affText = File.ReadAllText(_vm.LoadedAffPath, Encoding.UTF8);
+            var affText = File.ReadAllText(_vm.LoadedAffPath!, Encoding.UTF8);
             var aff = AffParser.Parse(affText);
 
             var opt = new ConverterOptions
@@ -371,34 +415,9 @@ public partial class ConverterPage : UserControl
             };
 
             var result = InFalsusSongPackStudio.Convert.AffToSpcConverter.Convert(aff, opt);
-            _vm.PreviewEvents = result.Events;
-            ResetPreviewEditHistory();
-
-            // 计算事件的结束时间（用于预览时间范围）。
-            static int EndTime(ISpcEvent e) => e switch
-            {
-                SpcHold h => h.TimeMs + h.DurationMs,
-                SpcSkyArea s => s.TimeMs + s.DurationMs,
-                _ => e.TimeMs
-            };
-
-            _vm.PreviewMaxTimeMs = Math.Max(5000, result.Events.Max(EndTime));
-            _vm.PreviewTimeMs = Math.Max(0, result.Events
-                .Where(x => x is not SpcChart)
-                .Select(x => x.TimeMs)
-                .DefaultIfEmpty(0).Min());
-            _pendingFirstPreviewEntryReset = true;
-            PreviewControl.JudgeTimeMs = _vm.PreviewTimeMs;
-            PreviewControl.JudgeTimeMsPrecise = _vm.PreviewTimeMs;
+            ApplyConvertedResult(result);
 
             ValidationUtil.Validate(result.Events, opt, result.Warnings);
-
-            var spcText = SpcWriter.Write(result.Events);
-            _vm.GeneratedSpcText = spcText;
-            _vm.SpcPreview = spcText;
-            SpcOutputTextBox.IsReadOnly = true;
-            _spcTextNeedsPreviewSync = false;
-            RefreshPreviewEditButtonStates();
 
             _vm.Status = $"转换成功：tap={result.Events.Count(x => x.Type == SpcEventType.Tap)}, " +
                          $"hold={result.Events.Count(x => x.Type == SpcEventType.Hold)}, " +
@@ -414,6 +433,68 @@ public partial class ConverterPage : UserControl
             MessageBox.Show(ex.ToString(), "转换失败");
             _vm.Status = "转换失败。";
         }
+    }
+
+    private void ConvertFromOsu()
+    {
+        try
+        {
+            var osuText = File.ReadAllText(_vm.LoadedAffPath!, Encoding.UTF8);
+            var chart = OsuManiaParser.Parse(osuText);
+
+            var opt = new OsuToSpcOptions
+            {
+                GlobalTimeOffsetMs = _vm.GlobalTimeOffsetMs,
+                OutputBpmChanges = _vm.OutputBpmChanges,
+                TapKind = Math.Clamp(_vm.NoteDefaultKind, 1, 4),
+                HoldWidth = Math.Clamp(_vm.HoldDefaultWidth, 1, 6)
+            };
+
+            var result = OsuToSpcConverter.Convert(chart, opt);
+            ApplyConvertedResult(result);
+
+            _vm.Status = $"OSU 转换成功：tap={result.Events.Count(x => x.Type == SpcEventType.Tap)}, " +
+                         $"hold={result.Events.Count(x => x.Type == SpcEventType.Hold)}, " +
+                         $"bpm={result.Events.Count(x => x.Type == SpcEventType.Bpm)}, " +
+                         $"警告={result.Warnings.Count}";
+
+            if (result.Warnings.Count > 0)
+                MessageBox.Show(string.Join("\n", result.Warnings.Take(40)), "警告（前40条）");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "OSU 转换失败");
+            _vm.Status = "OSU 转换失败。";
+        }
+    }
+
+    private void ApplyConvertedResult(ConversionResult result)
+    {
+        _vm.PreviewEvents = result.Events;
+        ResetPreviewEditHistory();
+
+        static int EndTime(ISpcEvent e) => e switch
+        {
+            SpcHold h => h.TimeMs + h.DurationMs,
+            SpcSkyArea s => s.TimeMs + s.DurationMs,
+            _ => e.TimeMs
+        };
+
+        _vm.PreviewMaxTimeMs = Math.Max(5000, result.Events.Max(EndTime));
+        _vm.PreviewTimeMs = Math.Max(0, result.Events
+            .Where(x => x is not SpcChart)
+            .Select(x => x.TimeMs)
+            .DefaultIfEmpty(0).Min());
+        _pendingFirstPreviewEntryReset = true;
+        PreviewControl.JudgeTimeMs = _vm.PreviewTimeMs;
+        PreviewControl.JudgeTimeMsPrecise = _vm.PreviewTimeMs;
+
+        var spcText = SpcWriter.Write(result.Events);
+        _vm.GeneratedSpcText = spcText;
+        _vm.SpcPreview = spcText;
+        SpcOutputTextBox.IsReadOnly = true;
+        _spcTextNeedsPreviewSync = false;
+        RefreshPreviewEditButtonStates();
     }
 
     // 将当前 SPC 工作副本导出到文件（另存为，不覆盖原文件）。
@@ -770,7 +851,19 @@ public partial class ConverterPage : UserControl
     }
 
     public void EnterConversionNavigationMode()
+        => EnterAffConversionNavigationMode();
+
+    public void EnterAffConversionNavigationMode()
     {
+        SetInputChartMode(InputChartMode.Aff);
+        if (PreviewModeToggle.IsChecked != true) return;
+        PreviewModeToggle.IsChecked = false;
+        OnPreviewToggled(this, new RoutedEventArgs());
+    }
+
+    public void EnterOsuConversionNavigationMode()
+    {
+        SetInputChartMode(InputChartMode.Osu);
         if (PreviewModeToggle.IsChecked != true) return;
         PreviewModeToggle.IsChecked = false;
         OnPreviewToggled(this, new RoutedEventArgs());
@@ -1945,7 +2038,7 @@ public partial class ConverterPage : UserControl
     private void ConverterPage_Unloaded(object sender, RoutedEventArgs e)
     {
         StopPlayback();
-        DisposeAudio();
+        // 切换到其他页面时会触发 Unloaded；这里不销毁已导入 BGM，避免返回后需要重新导入。
     }
 
 }

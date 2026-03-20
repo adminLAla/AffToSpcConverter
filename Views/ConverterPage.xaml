@@ -42,8 +42,8 @@
 
                 <!-- 文件与转换按钮 -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button Margin="0,0,4,0" Padding="10,2" MinWidth="86" Click="BtnOpenAff_Click" ToolTip="打开 .aff">打开 AFF</Button>
-                    <Button Margin="0,0,8,0" Padding="10,2" MinWidth="86" Click="BtnOpenSpc_Click" ToolTip="打开 .spc">打开 SPC</Button>
+                    <Button x:Name="BtnOpenInputChart" Margin="0,0,4,0" Padding="10,2" MinWidth="86" Click="BtnOpenAff_Click" ToolTip="打开 .aff">打开 .aff</Button>
+                    <Button Margin="0,0,8,0" Padding="10,2" MinWidth="86" Click="BtnOpenSpc_Click" ToolTip="打开 .spc">打开 .spc</Button>
 
                     <Border Width="1" Margin="0,3,8,3" Background="{DynamicResource AppBorderBrush}"/>
 
@@ -156,7 +156,7 @@
 
                 <!-- 输入面板 -->
                 <DockPanel Grid.Column="0">
-                    <TextBlock DockPanel.Dock="Top" Text="输入 (.aff)"
+                    <TextBlock x:Name="InputPanelHeaderText" DockPanel.Dock="Top" Text="输入 (.aff)"
                                FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}" Margin="4,2"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -252,6 +252,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Orientation="Horizontal">
@@ -277,6 +278,12 @@
                                 </TextBlock.Text>
                             </TextBlock>
 
+                            <TextBlock Text="Ctrl+滚轮=调流速  左键拖=滚动  右键拖=缩放  左键点击=选择"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource AppSubtleForegroundBrush}" FontSize="10"/>
+                        </StackPanel>
+
+                        <!-- 播放速度独立到右侧，避免窄窗口时被视图按钮挤压裁切 -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,8,0" VerticalAlignment="Center">
                             <TextBlock Text="播放速度:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                             <Slider Width="120" Minimum="0.25" Maximum="1.5"
                                      TickFrequency="0.05"
@@ -286,15 +293,12 @@
                                      Value="{Binding PreviewSpeed, Mode=TwoWay}"
                                      VerticalAlignment="Center"/>
                             <TextBlock VerticalAlignment="Center" FontFamily="Consolas"
-                                       MinWidth="44" Margin="4,0,12,0"
+                                       MinWidth="44" Margin="4,0,0,0"
                                        Text="{Binding PreviewSpeed, StringFormat={}{0:0.00}x}"/>
-
-                            <TextBlock Text="Ctrl+滚轮=调流速  左键拖=滚动  右键拖=缩放  左键点击=选择"
-                                       VerticalAlignment="Center" Foreground="{DynamicResource AppSubtleForegroundBrush}" FontSize="10"/>
                         </StackPanel>
 
                         <!-- 视图模式切换按钮 -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
                             <Button x:Name="BtnMergedView" Content="合并视图" Width="84" Padding="8,3"
                                 Margin="0,0,6,0" Click="OnMergedViewClick"
                                     FontSize="11"/>
@@ -358,7 +362,7 @@
                         Events="{Binding PreviewEvents}"
                         JudgeTimeMs="{Binding PreviewTimeMs, Mode=TwoWay}"
                         PixelsPerSecond="{Binding PreviewPixelsPerSecond, Mode=TwoWay}"
-                        Speed="1"
+                        Speed="{Binding PreviewSpeed}"
                         TargetFps="{Binding PreviewTargetFps}"
                         UseVsync="{Binding PreviewUseVsync}"
                         ShowFpsStats="{Binding ShowFpsStats}"/>

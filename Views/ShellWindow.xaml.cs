@@ -44,6 +44,7 @@ public partial class ShellWindow : Window
         Batch,
         Restore,
         AffConverter,
+        OsuConverter,
         Preview,
         Settings
     }
@@ -75,6 +76,7 @@ public partial class ShellWindow : Window
             [ShellSection.Batch] = BtnNavBatch,
             [ShellSection.Restore] = BtnNavRestore,
             [ShellSection.AffConverter] = BtnNavAffConverter,
+            [ShellSection.OsuConverter] = BtnNavOsuConverter,
             [ShellSection.Preview] = BtnNavPreview,
             [ShellSection.Settings] = BtnNavSettings
         };
@@ -85,6 +87,7 @@ public partial class ShellWindow : Window
         _navButtonGlyphs[BtnNavRestore] = "\uE81C";
         _navButtonGlyphs[BtnNavConverterGroup] = "\uE8AB";
         _navButtonGlyphs[BtnNavAffConverter] = "\uE8AB";
+        _navButtonGlyphs[BtnNavOsuConverter] = "\uE8AB";
         _navButtonGlyphs[BtnNavPreview] = "\uE890";
         _navButtonGlyphs[BtnNavSettings] = "\uE713";
         _navButtonGlyphs[BtnNavAbout] = "\uE946";
@@ -127,6 +130,9 @@ public partial class ShellWindow : Window
 
     private void NavAffConverter_Click(object sender, RoutedEventArgs e)
         => SwitchSection(ShellSection.AffConverter);
+
+    private void NavOsuConverter_Click(object sender, RoutedEventArgs e)
+        => SwitchSection(ShellSection.OsuConverter);
 
     private void NavPreview_Click(object sender, RoutedEventArgs e)
         => SwitchSection(ShellSection.Preview);
@@ -185,6 +191,19 @@ public partial class ShellWindow : Window
             return;
         }
 
+        if (section == ShellSection.AffConverter || section == ShellSection.OsuConverter)
+        {
+            var converterView = GetOrCreateConverterPage();
+            SectionContent.Content = converterView;
+            if (section == ShellSection.AffConverter)
+                converterView.EnterAffConversionNavigationMode();
+            else
+                converterView.EnterOsuConversionNavigationMode();
+
+            FadeInElement(SectionContent);
+            return;
+        }
+
         var host = GetOrCreateEmbeddedHost(section);
         SectionContent.Content = host.Content;
         FadeInElement(SectionContent);
@@ -213,6 +232,7 @@ public partial class ShellWindow : Window
             ShellSection.Bundle => CreateEmbeddedFromWindow(new BundleTexturePackageWindow { Owner = this }),
             ShellSection.Batch => CreateEmbeddedBatchHost(),
             ShellSection.AffConverter => GetOrCreateConverterHost(),
+            ShellSection.OsuConverter => GetOrCreateConverterHost(),
             ShellSection.Preview => CreatePreviewImportHost(),
             ShellSection.Settings => CreateEmbeddedSettingsHost(),
             _ => throw new InvalidOperationException("Unsupported section.")
@@ -597,6 +617,7 @@ public partial class ShellWindow : Window
                 _ when button == BtnNavRestore => "恢复写入文件",
                 _ when button == BtnNavConverterGroup => "谱面转换",
                 _ when button == BtnNavAffConverter => "AFF → SPC转换",
+                _ when button == BtnNavOsuConverter => "OSU → SPC转换",
                 _ when button == BtnNavPreview => "谱面预览",
                 _ when button == BtnNavSettings => "设置",
                 _ when button == BtnNavAbout => "关于",
@@ -645,9 +666,11 @@ public partial class ShellWindow : Window
                 {
                     Text = label,
                     Margin = new Thickness(8, 0, 0, 0),
-                    FontSize = button == BtnNavAffConverter ? 12 : (button == BtnNavSettings || button == BtnNavAbout ? 12.5 : 13),
-                    FontWeight = button == BtnNavAffConverter || button == BtnNavSettings || button == BtnNavAbout ? FontWeights.Normal : FontWeights.Medium,
-                    VerticalAlignment = VerticalAlignment.Center
+                    FontSize = (button == BtnNavAffConverter || button == BtnNavOsuConverter) ? 12 : (button == BtnNavSettings || button == BtnNavAbout ? 12.5 : 13),
+                    FontWeight = (button == BtnNavAffConverter || button == BtnNavOsuConverter || button == BtnNavSettings || button == BtnNavAbout) ? FontWeights.Normal : FontWeights.Medium,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Width = (button == BtnNavAffConverter || button == BtnNavOsuConverter) ? 112 : double.NaN,
+                    TextAlignment = TextAlignment.Left
                 };
                 labelText.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(Button.Foreground)) { Source = button });
                 panel.Children.Add(labelText);
