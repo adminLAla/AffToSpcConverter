@@ -49,6 +49,9 @@ public partial class ConverterPage : UserControl
     private readonly Stack<List<ISpcEvent>> _undoEventHistory = new();
     // 预览编辑历史：恢复栈（存放被撤回的快照）。
     private readonly Stack<List<ISpcEvent>> _redoEventHistory = new();
+    // 与预览撤回/恢复快照一一对应的操作描述，用于状态提示。
+    private readonly Stack<string> _undoOperationHistory = new();
+    private readonly Stack<string> _redoOperationHistory = new();
     // 当前谱面在本轮加载后是否尚未首次进入可视化预览（首次进入时强制从 0ms 开始）。
     private bool _pendingFirstPreviewEntryReset = true;
     // 文本区副本在进入可视化预览前是否需要重新解析为事件列表。
@@ -81,6 +84,7 @@ public partial class ConverterPage : UserControl
         UpdateTextBoxLineNumbers(AffInputTextBox, AffInputLineNumbersTextBox, ref _affLineNumberRenderedCount);
         UpdateTextBoxLineNumbers(SpcOutputTextBox, SpcOutputLineNumbersTextBox, ref _spcLineNumberRenderedCount);
         RefreshPreviewEditButtonStates();
+        ApplyPreviewViewModeButtonState();
         _vm.Status = "请打开 .aff 或 .spc 开始。";
         Unloaded += ConverterPage_Unloaded;
     }
@@ -182,8 +186,22 @@ public partial class ConverterPage : UserControl
 
     private Window? GetHostWindow() => Window.GetWindow(this);
 
+    private Brush ThemeBrush(string resourceKey, Brush fallback)
+        => TryFindResource(resourceKey) as Brush ?? fallback;
+
     // 当前编辑撤销历史上限（同时用于文本撤销栈与预览撤销栈）。
     private int EditHistoryLimit => Math.Clamp(_vm.TextEditUndoLimit, 1, 5000);
+
+    private void PushPreviewOperationSnapshot(Stack<string> stack, string operationDescription)
+    {
+        stack.Push(string.IsNullOrWhiteSpace(operationDescription) ? "预览编辑" : operationDescription.Trim());
+        if (stack.Count <= EditHistoryLimit) return;
+
+        var keepTopToBottom = stack.Take(EditHistoryLimit).ToList();
+        stack.Clear();
+        for (int i = keepTopToBottom.Count - 1; i >= 0; i--)
+            stack.Push(keepTopToBottom[i]);
+    }
 
     // 向预览撤销/恢复栈压入快照，并按设置裁剪最大深度（保留最新记录）。
     private void PushPreviewHistorySnapshot(Stack<List<ISpcEvent>> stack, IReadOnlyList<ISpcEvent> events)
@@ -522,7 +540,7 @@ public partial class ConverterPage : UserControl
         {
             Text = "点击带“第 X 行”的错误可自动定位到输出 .spc 对应行。",
             Margin = new Thickness(12, 10, 12, 6),
-            Foreground = Brushes.DimGray,
+            Foreground = ThemeBrush("AppSubtleForegroundBrush", Brushes.DimGray),
             TextWrapping = TextWrapping.Wrap
         };
 
@@ -819,7 +837,7 @@ public partial class ConverterPage : UserControl
         SpcOutputTextBox.Undo();
         _spcTextNeedsPreviewSync = true;
         _vm.GeneratedSpcText = SpcOutputTextBox.Text;
-        _vm.Status = "已撤销文本区上一次修改。";
+        _vm.Status = "已撤销：文本区编辑修改";
         RefreshPreviewEditButtonStates();
     }
 
@@ -840,7 +858,7 @@ public partial class ConverterPage : UserControl
         SpcOutputTextBox.Redo();
         _spcTextNeedsPreviewSync = true;
         _vm.GeneratedSpcText = SpcOutputTextBox.Text;
-        _vm.Status = "已恢复文本区上一次修改。";
+        _vm.Status = "已恢复：文本区编辑修改";
         RefreshPreviewEditButtonStates();
     }
 
@@ -927,7 +945,7 @@ public partial class ConverterPage : UserControl
 
         if (newEvent == null) return;
 
-        PushUndoSnapshotForPreviewEdit();
+        PushUndoSnapshotForPreviewEdit($"添加 {newEvent.Type} 音符（{newEvent.TimeMs}ms）");
         events.Add(newEvent);
         events.Sort((a, b) =>
         {
@@ -965,14 +983,18 @@ public partial class ConverterPage : UserControl
     {
         _undoEventHistory.Clear();
         _redoEventHistory.Clear();
+        _undoOperationHistory.Clear();
+        _redoOperationHistory.Clear();
         RefreshPreviewEditButtonStates();
     }
 
-    private void PushUndoSnapshotForPreviewEdit()
+    private void PushUndoSnapshotForPreviewEdit(string operationDescription)
     {
         if (_vm.PreviewEvents == null) return;
         PushPreviewHistorySnapshot(_undoEventHistory, _vm.PreviewEvents);
         _redoEventHistory.Clear();
+        PushPreviewOperationSnapshot(_undoOperationHistory, operationDescription);
+        _redoOperationHistory.Clear();
         RefreshPreviewEditButtonStates();
     }
 
@@ -998,7 +1020,7 @@ public partial class ConverterPage : UserControl
         }
 
         var removed = events[idx];
-        PushUndoSnapshotForPreviewEdit();
+        PushUndoSnapshotForPreviewEdit($"删除 {removed.Type} 音符（{removed.TimeMs}ms）");
         events.RemoveAt(idx);
 
         ApplyEventsAndRefresh(events);
@@ -1026,13 +1048,18 @@ public partial class ConverterPage : UserControl
             return;
         }
 
+        string operation = _undoOperationHistory.Count > 0 ? _undoOperationHistory.Pop() : "预览编辑";
+
         if (_vm.PreviewEvents != null)
+        {
             PushPreviewHistorySnapshot(_redoEventHistory, _vm.PreviewEvents);
+            PushPreviewOperationSnapshot(_redoOperationHistory, operation);
+        }
 
         var snapshot = _undoEventHistory.Pop();
         HidePropPanel();
         ApplyEventsAndRefresh(new List<ISpcEvent>(snapshot));
-        _vm.Status = "已撤回上一次操作。";
+        _vm.Status = $"已撤销：{operation}";
     }
 
     private void BtnRedoLastOperation_Click(object sender, RoutedEventArgs e)
@@ -1043,31 +1070,54 @@ public partial class ConverterPage : UserControl
             return;
         }
 
+        string operation = _redoOperationHistory.Count > 0 ? _redoOperationHistory.Pop() : "预览编辑";
+
         if (_vm.PreviewEvents != null)
+        {
             PushPreviewHistorySnapshot(_undoEventHistory, _vm.PreviewEvents);
+            PushPreviewOperationSnapshot(_undoOperationHistory, operation);
+        }
 
         var snapshot = _redoEventHistory.Pop();
         HidePropPanel();
         ApplyEventsAndRefresh(new List<ISpcEvent>(snapshot));
-        _vm.Status = "已恢复上一次操作。";
+        _vm.Status = $"已恢复：{operation}";
     }
 
     private void OnMergedViewClick(object sender, RoutedEventArgs e)
     {
         PreviewControl.ViewMode = PreviewViewMode.Merged;
-        BtnMergedView.ClearValue(Button.BackgroundProperty);
-        BtnMergedView.ClearValue(Button.ForegroundProperty);
-        BtnSplitView.ClearValue(Button.BackgroundProperty);
-        BtnSplitView.ClearValue(Button.ForegroundProperty);
+        ApplyPreviewViewModeButtonState();
     }
 
     private void OnSplitViewClick(object sender, RoutedEventArgs e)
     {
         PreviewControl.ViewMode = PreviewViewMode.Split;
-        BtnSplitView.ClearValue(Button.BackgroundProperty);
-        BtnSplitView.ClearValue(Button.ForegroundProperty);
-        BtnMergedView.ClearValue(Button.BackgroundProperty);
-        BtnMergedView.ClearValue(Button.ForegroundProperty);
+        ApplyPreviewViewModeButtonState();
+    }
+
+    private void ApplyPreviewViewModeButtonState()
+    {
+        bool isMerged = PreviewControl.ViewMode == PreviewViewMode.Merged;
+        SetViewModeButtonSelected(BtnMergedView, isMerged);
+        SetViewModeButtonSelected(BtnSplitView, !isMerged);
+    }
+
+    private static void SetViewModeButtonSelected(Button button, bool isSelected)
+    {
+        if (isSelected)
+        {
+            button.SetResourceReference(Button.BackgroundProperty, "AppNavItemActiveBrush");
+            button.SetResourceReference(Button.BorderBrushProperty, "AppAccentBrush");
+            button.SetResourceReference(Button.ForegroundProperty, "AppForegroundBrush");
+            button.FontWeight = FontWeights.SemiBold;
+            return;
+        }
+
+        button.ClearValue(Button.BackgroundProperty);
+        button.ClearValue(Button.BorderBrushProperty);
+        button.ClearValue(Button.ForegroundProperty);
+        button.FontWeight = FontWeights.Normal;
     }
 
     private void OnNoteSelected(RenderItem? item)
@@ -1089,7 +1139,8 @@ public partial class ConverterPage : UserControl
         RefreshPreviewEditButtonStates();
     }
 
-    // 收到预览控件点击命中事件，根据设置决定是否打开音符编辑面板。
+    // 收到预览控件点击命中事件：只更新选中项，不直接弹出编辑面板。
+    // 编辑面板由顶部“编辑(铅笔)”按钮显式触发。
     private void OnPreviewNoteClicked(RenderItem? item, int clickCount)
     {
         if (_vm.IsPlaying && _vm.DisableNoteSelectionWhilePlaying)
@@ -1101,17 +1152,9 @@ public partial class ConverterPage : UserControl
         if (item == null || item.SourceEvent == null)
             return;
 
-        bool editOnDoubleClick = _vm.PreviewNoteEditTriggerMode == "double";
-        if (editOnDoubleClick)
-        {
-            if (clickCount >= 2)
-                ShowPropPanel(item);
-            else
-                HidePropPanel(clearSelection: false);
-            return;
-        }
-
-        ShowPropPanel(item);
+        _selectedRenderItem = item;
+        HidePropPanel(clearSelection: false);
+        RefreshPreviewEditButtonStates();
     }
 
     // 展开属性面板并填充当前选中音符的字段。
@@ -1271,15 +1314,15 @@ public partial class ConverterPage : UserControl
         {
             Text = label,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xAA, 0xAA, 0xAA)),
+            Foreground = ThemeBrush("AppSubtleForegroundBrush", Brushes.SteelBlue),
             FontSize = 11
         };
         var toggle = new CheckBox
         {
             Content = "可编辑",
-            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x99, 0x99, 0x99)),
+            Foreground = ThemeBrush("AppSubtleForegroundBrush", Brushes.SteelBlue),
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(6, 0, 0, 0)
+            Margin = new Thickness(6, 0, 20, 0)
         };
 
         Grid.SetColumn(text, 0);
@@ -1338,7 +1381,7 @@ public partial class ConverterPage : UserControl
         PropFieldsPanel.Children.Add(new TextBlock
         {
             Text = text,
-            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xDD, 0xDD, 0xDD)),
+            Foreground = ThemeBrush("AppForegroundBrush", Brushes.White),
             FontWeight = FontWeights.Bold,
             FontSize = 12,
             Margin = new Thickness(0, 10, 0, 2)
@@ -1366,11 +1409,11 @@ public partial class ConverterPage : UserControl
     }
 
     // 构建属性面板标签样式的 TextBlock。
-    private static TextBlock MakeLabelBlock(string text) => new()
+    private TextBlock MakeLabelBlock(string text) => new()
     {
         Text = text,
         TextWrapping = TextWrapping.Wrap,
-        Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0xAA, 0xAA, 0xAA)),
+        Foreground = ThemeBrush("AppSubtleForegroundBrush", Brushes.SteelBlue),
         FontSize = 11,
         Margin = new Thickness(0, 6, 0, 2)
     };
@@ -1458,7 +1501,7 @@ public partial class ConverterPage : UserControl
 
         if (newEvent == null) return;
 
-        PushUndoSnapshotForPreviewEdit();
+        PushUndoSnapshotForPreviewEdit($"编辑 {newEvent.Type} 音符（{newEvent.TimeMs}ms）");
         // 写回事件列表
         events[idx] = newEvent;
 
@@ -1749,6 +1792,16 @@ public partial class ConverterPage : UserControl
             StartPlayback();
     }
 
+    private void IncreasePreviewSyncOffset_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.PreviewSyncOffsetMs += 1;
+    }
+
+    private void DecreasePreviewSyncOffset_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.PreviewSyncOffsetMs -= 1;
+    }
+
     // 开始背景音乐播放并同步预览。
     private void StartPlayback()
     {
@@ -1895,10 +1948,4 @@ public partial class ConverterPage : UserControl
         DisposeAudio();
     }
 
-    // 退出可视化预览模式并切回文本视图。
-    private void BtnExitPreview_Click(object sender, RoutedEventArgs e)
-    {
-        PreviewModeToggle.IsChecked = false;
-        OnPreviewToggled(sender, e);
-    }
 }

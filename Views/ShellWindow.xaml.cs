@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using InFalsusSongPackStudio.Utils;
 
@@ -17,6 +18,8 @@ public partial class ShellWindow : Window
 {
     private static readonly System.Windows.Media.FontFamily NavIconFontFamily = new("Segoe Fluent Icons");
     private static readonly Duration SidebarAnimationDuration = new(TimeSpan.FromMilliseconds(180));
+    private const double StartupTargetPixelWidth = 1600;
+    private const double StartupTargetPixelHeight = 900;
 
     public double SidebarAnimatedWidth
     {
@@ -57,10 +60,12 @@ public partial class ShellWindow : Window
     private bool _isSidebarCollapsed;
     private bool _isConverterSubmenuExpanded;
     private string _pendingRestoreGameDirectory = string.Empty;
+    private bool _startupSizeApplied;
 
     public ShellWindow()
     {
         InitializeComponent();
+        SourceInitialized += (_, _) => ApplyStartupSizeByDpi();
         SidebarAnimatedWidth = SidebarColumn.Width.Value;
 
         _navButtons = new Dictionary<ShellSection, Button>
@@ -94,6 +99,21 @@ public partial class ShellWindow : Window
 
         RefreshGameDirectoryText();
         SwitchSection(ShellSection.Home);
+    }
+
+    private void ApplyStartupSizeByDpi()
+    {
+        if (_startupSizeApplied)
+            return;
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        double widthDip = StartupTargetPixelWidth / Math.Max(0.01, dpi.DpiScaleX);
+        double heightDip = StartupTargetPixelHeight / Math.Max(0.01, dpi.DpiScaleY);
+
+        Rect workArea = SystemParameters.WorkArea;
+        Width = Math.Min(widthDip, workArea.Width);
+        Height = Math.Min(heightDip, workArea.Height);
+        _startupSizeApplied = true;
     }
 
     private void NavHome_Click(object sender, RoutedEventArgs e)
@@ -286,6 +306,9 @@ public partial class ShellWindow : Window
             Owner = this,
             IsEmbeddedHost = true
         };
+
+        // 设置页中的高级项绑定 MainViewModel，复用转换页的同一实例可确保默认值/当前值一致。
+        window.DataContext = GetOrCreateConverterPage().DataContext;
 
         window.SettingsApplied += (_, _) =>
         {

@@ -114,7 +114,7 @@ public class MainViewModel : INotifyPropertyChanged
     private string _sortMode = "timeFirst";
     public string SortMode { get => _sortMode; set { _sortMode = value; OnPropertyChanged(); } }
 
-    private int _textEditUndoLimit = 200;
+    private int _textEditUndoLimit = 100;
     public int TextEditUndoLimit
     {
         get => _textEditUndoLimit;

@@ -1,6 +1,7 @@
 using System.Windows;
 using Microsoft.Win32;
 using InFalsusSongPackStudio.Utils;
+using InFalsusSongPackStudio.ViewModels;
 using System.IO;
 using System.Linq;
 
@@ -149,6 +150,22 @@ public partial class SettingsWindow : Window
         string selectedTheme = CbThemeMode.SelectedValue as string ?? AppThemeManager.ThemeSystem;
         ThemeMode = AppThemeManager.NormalizeThemeMode(selectedTheme);
         AutoRenameWhenTargetLocked = CbAutoRenameWhenLocked.IsChecked == true;
+    }
+
+    private void IncreaseGlobalTimeOffset_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        vm.GlobalTimeOffsetMs = Math.Clamp(vm.GlobalTimeOffsetMs + 1, -100000, 100000);
+    }
+
+    private void DecreaseGlobalTimeOffset_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+            return;
+
+        vm.GlobalTimeOffsetMs = Math.Clamp(vm.GlobalTimeOffsetMs - 1, -100000, 100000);
     }
 
     private static bool IsValidGameDirectory(string? gameDirectory)

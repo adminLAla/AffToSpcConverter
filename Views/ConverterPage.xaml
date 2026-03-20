@@ -36,8 +36,8 @@
             Background="{DynamicResource AppSurfaceAltBrush}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- 文件与转换按钮 -->
@@ -73,10 +73,10 @@
 
                 <!-- 背景音乐与播放控件 -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button Width="88" Margin="0,0,4,0" Click="BtnOpenBgm_Click">打开 BGM</Button>
+                    <Button Width="96" Height="30" Margin="0,0,6,0" Click="BtnOpenBgm_Click">打开 BGM</Button>
                     <TextBlock Text="{Binding BgmFileName}" VerticalAlignment="Center"
-                               Margin="0,0,8,0" Foreground="{DynamicResource AppSubtleForegroundBrush}" FontSize="12"/>
-                    <Button Width="32" Margin="0,0,2,0" Click="BtnPlayPause_Click"
+                               Margin="0,0,10,0" Foreground="{DynamicResource AppSubtleForegroundBrush}" FontSize="12"/>
+                    <Button Width="36" Height="30" Margin="0,0,3,0" Click="BtnPlayPause_Click"
                             ToolTip="播放 / 暂停">
                         <TextBlock>
                             <TextBlock.Style>
@@ -91,18 +91,22 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Button>
-                    <Button Width="32" Click="BtnRestart_Click" ToolTip="从头播放">↩</Button>
-                    <Separator Margin="8,0,8,0"/>
-                    <Button Padding="8,2" Margin="0,0,4,0" Click="BtnAddNote_Click" ToolTip="添加音符">＋</Button>
-                    <Button x:Name="BtnDeleteNoteTop" Padding="8,2" Margin="0,0,4,0" Click="BtnDeleteNote_Click" ToolTip="删除音符">－</Button>
-                    <Button x:Name="BtnEditNoteTop" Padding="8,2" Margin="0,0,4,0" Click="BtnEditNote_Click" ToolTip="编辑音符" FontFamily="Segoe UI Symbol" FontSize="14">✎</Button>
-                    <Button x:Name="BtnUndoTop" Padding="8,2" Margin="0,0,4,0" Click="BtnUndoLastOperation_Click" ToolTip="撤回">↶</Button>
-                    <Button x:Name="BtnRedoTop" Padding="8,2" Click="BtnRedoLastOperation_Click" ToolTip="恢复">↷</Button>
+                        <Button Width="42" Height="30" Click="BtnRestart_Click" ToolTip="从头播放" Padding="0"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                        <Border Width="10" Height="10" CornerRadius="1"
+                            Background="{DynamicResource AppForegroundBrush}"/>
+                        </Button>
+                    <Separator Margin="10,0,10,0"/>
+                    <Button Width="40" Height="30" Padding="0" Margin="0,0,6,0" Click="BtnAddNote_Click" ToolTip="添加音符" FontSize="18" FontWeight="Bold">+</Button>
+                    <Button x:Name="BtnDeleteNoteTop" Width="40" Height="30" Padding="0" Margin="0,0,6,0" Click="BtnDeleteNote_Click" ToolTip="删除音符" FontSize="18" FontWeight="Bold">−</Button>
+                    <Button x:Name="BtnEditNoteTop" Width="40" Height="30" Padding="0" Margin="0,0,6,0" Click="BtnEditNote_Click" ToolTip="编辑音符" FontFamily="Segoe UI Symbol" FontSize="14">✎</Button>
+                    <Button x:Name="BtnUndoTop" Width="40" Height="30" Padding="0" Margin="0,0,6,0" Click="BtnUndoLastOperation_Click" ToolTip="撤回">↶</Button>
+                    <Button x:Name="BtnRedoTop" Width="40" Height="30" Padding="0" Click="BtnRedoLastOperation_Click" ToolTip="恢复">↷</Button>
                 </StackPanel>
 
                 <!-- 状态提示 + 播放同步偏移 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal"
-                            VerticalAlignment="Center" Margin="12,0,0,0">
+                            VerticalAlignment="Center" HorizontalAlignment="Right" Margin="8,0,0,0">
                     <TextBlock Text="{Binding Status}"
                                VerticalAlignment="Center"
                                Foreground="#337733"/>
@@ -110,11 +114,31 @@
                                VerticalAlignment="Center"
                                Margin="18,0,4,0"
                                Foreground="{DynamicResource AppSubtleForegroundBrush}" FontSize="10"/>
-                    <TextBox Width="64" Height="20"
-                             VerticalContentAlignment="Center"
-                             TextAlignment="Right"
-                             FontFamily="Consolas" FontSize="11"
-                             Text="{Binding PreviewSyncOffsetMs, Mode=TwoWay}"/>
+                    <Grid Width="72">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="18"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 IsReadOnly="True"
+                                 IsTabStop="False"
+                                 MinHeight="24"
+                                 Padding="2,0"
+                                 VerticalContentAlignment="Center"
+                                 HorizontalContentAlignment="Center"
+                                 TextAlignment="Center"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 Text="{Binding PreviewSyncOffsetMs}"/>
+                        <Grid Grid.Column="1" Margin="2,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Button Grid.Row="0" Padding="0" FontSize="8" Click="IncreasePreviewSyncOffset_Click">▲</Button>
+                            <Button Grid.Row="1" Padding="0" FontSize="8" Click="DecreasePreviewSyncOffset_Click">▼</Button>
+                        </Grid>
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>
@@ -271,12 +295,10 @@
 
                         <!-- 视图模式切换按钮 -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
-                            <Button Content="退出预览" Padding="8,3" Margin="0,0,8,0"
-                                    Click="BtnExitPreview_Click" FontSize="11"/>
-                            <Button x:Name="BtnMergedView" Content="合并视图" Padding="8,3"
-                                    Margin="0,0,2,0" Click="OnMergedViewClick"
+                            <Button x:Name="BtnMergedView" Content="合并视图" Width="84" Padding="8,3"
+                                Margin="0,0,6,0" Click="OnMergedViewClick"
                                     FontSize="11"/>
-                            <Button x:Name="BtnSplitView" Content="分离视图" Padding="8,3"
+                            <Button x:Name="BtnSplitView" Content="分离视图" Width="84" Padding="8,3"
                                     Click="OnSplitViewClick"
                                     FontSize="11"/>
                         </StackPanel>
@@ -291,18 +313,18 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- 属性面板（左侧，选中音符时显示） -->
-                    <Border x:Name="PropPanel" Grid.Column="0" Background="#FF1E1E2E"
-                            BorderBrush="#555" BorderThickness="0,0,1,0"
+                        <Border x:Name="PropPanel" Grid.Column="0" Background="{DynamicResource AppSurfaceAltBrush}"
+                            BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,1,0"
                             Visibility="Collapsed">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8,6">
-                            <StackPanel x:Name="PropStack" Width="240">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="8,6,16,6">
+                            <StackPanel x:Name="PropStack" MinWidth="220" HorizontalAlignment="Stretch">
                                 <!-- 标题 -->
                                 <TextBlock x:Name="PropHeader" Text="编辑音符"
-                                           Foreground="#DDDDDD" FontSize="14" FontWeight="Bold"
+                                           Foreground="{DynamicResource AppForegroundBrush}" FontSize="14" FontWeight="Bold"
                                            Margin="0,0,0,8"/>
 
                                 <!-- 时间 (ms) -->
-                                <TextBlock Text="时间 (ms)" Foreground="#AAAAAA" FontSize="11" Margin="0,4,0,2"/>
+                                <TextBlock Text="时间 (ms)" Foreground="{DynamicResource AppSubtleForegroundBrush}" FontSize="11" Margin="0,4,0,2"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="28"/>
@@ -319,11 +341,11 @@
                                 <StackPanel x:Name="PropFieldsPanel"/>
 
                                 <!-- 应用 / 取消 -->
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                                    <Button Content="✔ 应用" Padding="12,4" Margin="0,0,4,0"
-                                            Click="PropApply_Click" FontSize="11"/>
-                                    <Button Content="✕ 取消" Padding="12,4"
-                                            Click="PropCancel_Click" FontSize="11"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,20,0">
+                                    <Button Content="✔ 应用" Width="74" Height="30" Padding="12,4" Margin="0,0,10,0"
+                                        Click="PropApply_Click" FontSize="12" FontWeight="SemiBold"/>
+                                    <Button Content="✕ 取消" Width="74" Height="30" Padding="12,4"
+                                        Click="PropCancel_Click" FontSize="12" FontWeight="SemiBold"/>
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>

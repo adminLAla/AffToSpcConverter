@@ -512,15 +512,12 @@ public partial class BundleTexturePackageWindow : Window
             if (dialog.ShowDialog() != true) return;
 
             string zipPath = dialog.FileName;
-            string zipDir = Path.GetDirectoryName(zipPath) ?? "";
             string zipNameWithoutExt = Path.GetFileNameWithoutExtension(zipPath);
-            string extractDir = Path.Combine(zipDir, zipNameWithoutExt);
-
-            // 解压到目标文件夹（若已存在则覆盖）
-            if (Directory.Exists(extractDir))
-            {
-                Directory.Delete(extractDir, true);
-            }
+            string importRoot = Path.Combine(Path.GetTempPath(), "InFalsusSongPackStudio", "ImportPackage");
+            Directory.CreateDirectory(importRoot);
+            string safeBaseName = string.Concat(zipNameWithoutExt.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+            string extractDir = Path.Combine(importRoot, $"{safeBaseName}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(extractDir);
             ZipFile.ExtractToDirectory(zipPath, extractDir);
 
             // 读取song.json
@@ -1194,12 +1191,18 @@ public partial class BundleTexturePackageWindow : Window
     // 获取尚未被当前表格使用的第一个谱面槽位（0-3）。
     private int GetNextAvailableChartSlotIndex()
     {
-        if (_vm.ChartRows.Count == 0)
-            return 0;
+        var used = _vm.ChartRows
+            .Select(x => x.ChartSlotIndex)
+            .Where(x => x >= 0 && x <= 3)
+            .ToHashSet();
 
-        int maxUsed = _vm.ChartRows.Max(x => x.ChartSlotIndex);
-        int next = maxUsed + 1;
-        return next <= 3 ? next : 3;
+        for (int i = 0; i <= 3; i++)
+        {
+            if (!used.Contains(i))
+                return i;
+        }
+
+        return 3;
     }
 
     // 构建适合 MessageBox 展示的异常摘要（类型 + 消息 + 第一层内部异常 + 首帧堆栈）。

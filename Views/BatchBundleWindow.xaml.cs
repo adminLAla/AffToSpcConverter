@@ -10,19 +10,12 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using Path = System.IO.Path;
 using Microsoft.Win32;
 using InFalsusSongPackStudio.Utils;
-using Microsoft.VisualBasic.ApplicationServices;
-using static System.Windows.Forms.AxHost;
 using System.Collections.Specialized;
-using System.Threading;
 using System.Diagnostics;
 using System.Runtime;
 using System.Runtime.InteropServices;
@@ -250,6 +243,7 @@ namespace InFalsusSongPackStudio.Views
 
             vm.Status.Clear();
             UpdateOperationGuide();
+            var songPacksSnapshot = vm.SongPacks.ToList();
 
 
             await Task.Run(() =>
@@ -270,7 +264,7 @@ namespace InFalsusSongPackStudio.Views
                 int successCount = 0;
                 int failCount = 0;
 
-                foreach (var pack in vm.SongPacks)
+                foreach (var pack in songPacksSnapshot)
                 {
                     string extractDir = "";
                     try
